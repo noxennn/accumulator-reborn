@@ -95,6 +95,68 @@ bool wsConnect() {
   return true;
 }
 
+// WiFi + WebSocket tam yeniden bağlanma (ESP reset dahil)
+void tamYenidenBaglan() {
+  static uint8_t basarisizSayaci = 0;
+
+  // 3 ardışık başarısız denemeden sonra ESP'yi tamamen sıfırla
+  if (basarisizSayaci >= 3) {
+    Serial.println("ESP8266 yeniden baslatiliyor (AT+RST)...");
+    client.stop();
+    WiFi.disconnect();
+    delay(500);
+
+    Serial2.println("AT+RST");
+    String buf = "";
+    unsigned long t = millis();
+    while (millis() - t < 8000) {
+      while (Serial2.available()) {
+        buf += (char)Serial2.read();
+        if (buf.length() > 500) buf = buf.substring(250);
+      }
+      if (buf.indexOf("ready") >= 0) break;
+    }
+    while (Serial2.available()) Serial2.read();
+
+    WiFi.init(Serial2);
+    basarisizSayaci = 0;
+  }
+
+  // WiFi bağlantısı kontrol et
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.print("WiFi yeniden baglaniliyor...");
+    WiFi.disconnect();
+    delay(500);
+    WiFi.begin(ssid, pass);
+    unsigned long t = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) {
+      delay(500);
+      Serial.print(".");
+    }
+    Serial.println();
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi baglantisi kurulamadi, tekrar denenecek.");
+      basarisizSayaci++;
+      return;
+    }
+    Serial.print("WiFi baglandi! IP: ");
+    Serial.println(WiFi.localIP());
+  }
+
+  // WebSocket bağlantısını dene
+  client.stop();
+  delay(500);
+  if (!wsConnect()) {
+    basarisizSayaci++;
+    Serial.print("Basarisiz deneme: ");
+    Serial.print(basarisizSayaci);
+    Serial.println("/3");
+    delay(3000);
+  } else {
+    basarisizSayaci = 0;
+  }
+}
+
 // ── Setup ────────────────────────────────────────────────────────
 
 void setup() {
@@ -150,8 +212,8 @@ void setup() {
 
   // WebSocket bağlan
   while (!wsConnect()) {
-    Serial.println("WebSocket yeniden deneniyor (5sn)...");
-    delay(5000);
+    Serial.println("WebSocket yeniden deneniyor (3sn)...");
+    delay(3000);
   }
 
   Serial.println("-----------------------------------------");
@@ -181,10 +243,8 @@ void loop() {
     // Bağlantı kontrolü ve yeniden bağlanma
     if (!client.connected()) {
       Serial.println("Baglanti koptu, yeniden baglaniliyor...");
-      client.stop();
-      while (!wsConnect()) {
-        delay(3000);
-      }
+      tamYenidenBaglan();
+      return; // Bu turda gönderme yapma, sonraki iterasyonda devam et
     }
 
     // JSON paketi oluştur
