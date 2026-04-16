@@ -18,7 +18,7 @@ char pass[] = "Yurt--2017";
 
 // WebSocket Sunucu Bilgileri
 #define WS_HOST "192.168.0.99"
-#define WS_PORT 81
+#define WS_PORT 8765
 
 WiFiClient client;
 
@@ -157,7 +157,52 @@ void tamYenidenBaglan() {
   }
 }
 
-// ── Setup ────────────────────────────────────────────────────────
+// Gelen WebSocket frame'lerini işler, ping gelirse pong döner
+void wsHandleIncoming() {
+  if (!client.available()) return;
+
+  // Frame header: byte 0 = FIN+opcode, byte 1 = uzunluk
+  uint8_t b0 = client.read();
+  if (!client.available()) return;
+  uint8_t b1 = client.read();
+
+  uint8_t opcode = b0 & 0x0F;
+  uint8_t masked = (b1 & 0x80) >> 7;
+  uint64_t payloadLen = b1 & 0x7F;
+
+  if (payloadLen == 126) {
+    uint8_t ext[2];
+    client.readBytes(ext, 2);
+    payloadLen = ((uint16_t)ext[0] << 8) | ext[1];
+  } else if (payloadLen == 127) {
+    // 64-bit uzunluk — bu boyutta ping gelmez, atla
+    return;
+  }
+
+  uint8_t mask[4] = {0};
+  if (masked) client.readBytes(mask, 4);
+
+  // Payload oku (ping için max 125 byte)
+  uint8_t payload[125];
+  uint8_t readLen = (uint8_t)min((uint64_t)125, payloadLen);
+  for (uint8_t i = 0; i < readLen; i++) {
+    uint8_t raw = client.available() ? client.read() : 0;
+    payload[i] = masked ? (raw ^ mask[i % 4]) : raw;
+  }
+
+  if (opcode == 0x9) {
+    // Ping alindi, maskeli Pong gonder (RFC 6455: client->server maskelenmeli)
+    uint8_t pongMask[4] = {0x4A, 0xC3, 0x7E, 0x21};
+    client.write((uint8_t)0x8A);                   // FIN + pong opcode
+    client.write((uint8_t)(0x80 | readLen));       // MASK=1 + uzunluk
+    client.write(pongMask, 4);
+    for (uint8_t i = 0; i < readLen; i++) {
+      client.write((uint8_t)(payload[i] ^ pongMask[i % 4]));
+    }
+  }
+  // opcode 0x8 = connection close — baglanti kopacak, loop halleder
+}
+
 
 void setup() {
   Serial.begin(9600);
@@ -222,6 +267,9 @@ void setup() {
 // ── Loop ─────────────────────────────────────────────────────────
 
 void loop() {
+  // Gelen tüm frame'leri işle (ping → pong)
+  while (client.available() >= 2) wsHandleIncoming();
+
   // CCS811 oku
   if (ccs.available() && !ccs.readData()) {
     co2  = ccs.geteCO2();
@@ -230,7 +278,7 @@ void loop() {
   }
 
   // PMS5003 oku
-  if (pms.readUntil(data, 100)) {
+  if (pms.readUntil(data, 20)) {
     pm25 = data.PM_AE_UG_2_5;
     pm10 = data.PM_AE_UG_10_0;
     pmsOk = true;

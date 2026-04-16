@@ -42,11 +42,11 @@ async def handler(websocket):
 
 async def main():
     host = "0.0.0.0"
-    port = 81
+    port = 8765
     print("=" * 55)
     print("  Hava Kalitesi WebSocket Sunucusu")
     print(f"  ws://{host}:{port}  uzerinde dinleniyor...")
-    print("  Arduino'nun gondermesi gereken adres: 192.168.0.99:81")
+    print("  Arduino'nun gondermesi gereken adres: 192.168.0.99:8765")
     print("=" * 55)
     async with websockets.serve(handler, host, port):
         await asyncio.Future()  # sonsuza kadar calis
