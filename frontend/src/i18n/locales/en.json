@@ -1,0 +1,137 @@
+{
+  "airQualityStation": "Air Quality Monitoring Station",
+  "dashboard": "Dashboard",
+  "analytics": "Analytics",
+  "settings": "Settings",
+  "logout": "Log Out",
+  "lastUpdated": "Last Updated",
+  "settingsPage": {
+    "title": "Settings",
+    "notifications": {
+      "title": "Notification Settings",
+      "enable": "Enable Notifications",
+      "description": "You will receive alerts when thresholds are exceeded",
+      "enabled": "Notifications are enabled",
+      "disabled": "Notifications are disabled"
+    },
+    "thresholds": {
+      "title": "Alert Thresholds",
+      "co2": "CO₂ (ppm)",
+      "pm25": "PM2.5 (μg/m³)",
+      "pm10": "PM10 (μg/m³)",
+      "voc": "VOC (ppb)"
+    },
+    "display": {
+      "title": "Display Settings",
+      "system": "Measurement System",
+      "metric": "Metric (°C, m³)",
+      "imperial": "Imperial (°F, ft³)"
+    },
+    "saveChanges": "Save Changes",
+    "saving": "Saving...",
+    "saveSuccess": "Settings saved successfully",
+    "loadError": "Failed to load settings. Using defaults.",
+    "saveError": "Failed to save settings"
+  },
+  "login": {
+    "title": "Log In to Your Account",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign In",
+    "register": "Register",
+    "noAccount": "Don't have an account?",
+    "invalidCredentials": "Invalid email or password",
+    "loggingIn": "Signing in...",
+    "continueWithoutLogin": "Continue without Login"
+  },
+  "register": {
+    "title": "Create a New Account",
+    "email": "Email",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "submit": "Create Account",
+    "login": "Log In",
+    "haveAccount": "Already have an account?",
+    "passwordMismatch": "Passwords do not match",
+    "invalidEmail": "Please enter a valid email address",
+    "passwordTooShort": "Password must be at least 6 characters",
+    "registrationFailed": "Registration failed. Please try again.",
+    "registering": "Creating account...",
+    "continueWithoutRegister": "Continue without Registration"
+  },
+  "sensors": {
+    "temperature": "Temperature",
+    "humidity": "Humidity",
+    "co2": "CO₂ Level",
+    "pm25": "PM2.5",
+    "pm10": "PM10",
+    "voc": "VOC",
+    "increasing": "Increasing",
+    "decreasing": "Decreasing",
+    "stable": "Stable"
+  },
+  "units": {
+    "temperature": "°C",
+    "humidity": "%",
+    "co2": "ppm",
+    "pm": "μg/m³",
+    "voc": "ppb"
+  },
+  "alerts": {
+    "title": "Alerts",
+    "high_co2": "High CO₂ Level",
+    "high_pm": "High Particulate Matter",
+    "high_voc": "High VOC Level",
+    "all_normal": "All values are within normal range.",
+    "some_high": "Some values are at high levels.",
+    "critical": "Danger! Air quality is at critical levels."
+  },
+  "analyticsPage": {
+    "last7Days": "Last 7 Days",
+    "last14Days": "Last 14 Days",
+    "last30Days": "Last 30 Days",
+    "trendAnalysis": "Trend Analysis",
+    "distribution": "Distribution",
+    "minimum": "Minimum",
+    "maximum": "Maximum",
+    "average": "Average",
+    "standardDeviation": "Standard Deviation",
+    "downloadReport": "Download Report",
+    "lineChart": "Line Chart",
+    "areaChart": "Area Chart",
+    "composedChart": "Composed Chart"
+  },
+  "predictions": {
+    "title": "Prediction",
+    "date": "Date",
+    "time": "Time",
+    "temperature": "Temperature",
+    "humidity": "Humidity",
+    "last7Hours": "Last 7 Hours"
+  },
+  "aqi": {
+    "title": "Air Quality Index",
+    "currentLevel": "Current AQI Level",
+    "levels": {
+      "good": "Good",
+      "moderate": "Moderate",
+      "poor": "Poor",
+      "veryPoor": "Very Poor",
+      "hazardous": "Hazardous"
+    }
+  },
+  "trend": {
+    "title": "24-Hour Trend",
+    "legendHelp": "Click on labels to show or hide values"
+  },
+  "errors": {
+    "dataLoadFailed": "Failed to load data",
+    "tryAgainMessage": "Please check your internet connection and try again",
+    "historicalDataFailed": "Failed to load historical sensor data",
+    "noDataAvailable": "No data available for the selected period",
+    "pdfGenerationFailed": "Failed to generate PDF report"
+  },
+  "actions": {
+    "refresh": "Refresh"
+  }
+}

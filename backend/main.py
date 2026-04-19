@@ -139,6 +139,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.warning(f"Raw (non-JSON) data: {message}")
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: {websocket.client}")
+    except (OSError, ConnectionResetError, ConnectionAbortedError) as e:
+        logger.warning(f"WebSocket connection lost (network error): {e}")
+    except Exception as e:
+        logger.error(f"WebSocket unexpected error: {e}")
     finally:
         db.close()
 

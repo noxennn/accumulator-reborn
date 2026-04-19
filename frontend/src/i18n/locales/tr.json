@@ -1,0 +1,137 @@
+{
+  "airQualityStation": "Hava Kalitesi İzleme İstasyonu",
+  "dashboard": "Gösterge Paneli",
+  "analytics": "Analizler",
+  "settings": "Ayarlar",
+  "logout": "Çıkış Yap",
+  "lastUpdated": "Son Güncelleme",
+  "settingsPage": {
+    "title": "Ayarlar",
+    "notifications": {
+      "title": "Bildirim Ayarları",
+      "enable": "Bildirimleri Etkinleştir",
+      "description": "Eşik değerleri aşıldığında uyarı alacaksınız",
+      "enabled": "Bildirimler etkin",
+      "disabled": "Bildirimler devre dışı"
+    },
+    "thresholds": {
+      "title": "Uyarı Eşikleri",
+      "co2": "CO₂ (ppm)",
+      "pm25": "PM2.5 (μg/m³)",
+      "pm10": "PM10 (μg/m³)",
+      "voc": "VOC (ppb)"
+    },
+    "display": {
+      "title": "Görüntüleme Ayarları",
+      "system": "Ölçüm Sistemi",
+      "metric": "Metrik (°C, m³)",
+      "imperial": "İmparatorluk (°F, ft³)"
+    },
+    "saveChanges": "Değişiklikleri Kaydet",
+    "saving": "Kaydediliyor...",
+    "saveSuccess": "Ayarlar başarıyla kaydedildi",
+    "loadError": "Ayarlar yüklenemedi. Varsayılanlar kullanılıyor.",
+    "saveError": "Ayarlar kaydedilemedi"
+  },
+  "login": {
+    "title": "Hesabınıza Giriş Yapın",
+    "email": "E-posta",
+    "password": "Şifre",
+    "submit": "Giriş Yap",
+    "register": "Kayıt Ol",
+    "noAccount": "Hesabınız yok mu?",
+    "invalidCredentials": "Geçersiz e-posta veya şifre",
+    "loggingIn": "Giriş yapılıyor...",
+    "continueWithoutLogin": "Giriş Yapmadan Devam Et"
+  },
+  "register": {
+    "title": "Yeni Hesap Oluştur",
+    "email": "E-posta",
+    "password": "Şifre",
+    "confirmPassword": "Şifreyi Onaylayın",
+    "submit": "Hesap Oluştur",
+    "login": "Giriş Yap",
+    "haveAccount": "Zaten hesabınız var mı?",
+    "passwordMismatch": "Şifreler eşleşmiyor",
+    "invalidEmail": "Lütfen geçerli bir e-posta adresi girin",
+    "passwordTooShort": "Şifre en az 6 karakter olmalıdır",
+    "registrationFailed": "Kayıt başarısız oldu. Lütfen tekrar deneyin.",
+    "registering": "Hesap oluşturuluyor...",
+    "continueWithoutRegister": "Kayıt Olmadan Devam Et"
+  },
+  "sensors": {
+    "temperature": "Sıcaklık",
+    "humidity": "Nem",
+    "co2": "CO₂ Seviyesi",
+    "pm25": "PM2.5",
+    "pm10": "PM10",
+    "voc": "VOC",
+    "increasing": "Yükseliyor",
+    "decreasing": "Düşüyor",
+    "stable": "Sabit"
+  },
+  "units": {
+    "temperature": "°C",
+    "humidity": "%",
+    "co2": "ppm",
+    "pm": "μg/m³",
+    "voc": "ppb"
+  },
+  "alerts": {
+    "title": "Uyarılar",
+    "high_co2": "Yüksek CO₂ Seviyesi",
+    "high_pm": "Yüksek Partikül Madde",
+    "high_voc": "Yüksek VOC Seviyesi",
+    "all_normal": "Tüm değerler normal aralıkta.",
+    "some_high": "Bazı değerler yüksek seviyede.",
+    "critical": "Tehlike! Hava kalitesi kritik seviyede."
+  },
+  "analyticsPage": {
+    "last7Days": "Son 7 Gün",
+    "last14Days": "Son 14 Gün",
+    "last30Days": "Son 30 Gün",
+    "trendAnalysis": "Trend Analizi",
+    "distribution": "Dağılım",
+    "minimum": "Minimum",
+    "maximum": "Maksimum",
+    "average": "Ortalama",
+    "standardDeviation": "Standart Sapma",
+    "downloadReport": "Rapor İndir",
+    "lineChart": "Çizgi Grafik",
+    "areaChart": "Alan Grafik",
+    "composedChart": "Karma Grafik"
+  },
+  "predictions": {
+    "title": "Tahmin",
+    "date": "Tarih",
+    "time": "Saat",
+    "temperature": "Sıcaklık",
+    "humidity": "Nem",
+    "last7Hours": "Son 7 Saat"
+  },
+  "aqi": {
+    "title": "Hava Kalitesi İndeksi",
+    "currentLevel": "Mevcut Seviye",
+    "levels": {
+      "good": "İyi",
+      "moderate": "Orta",
+      "poor": "Kötü",
+      "veryPoor": "Çok Kötü",
+      "hazardous": "Tehlikeli"
+    }
+  },
+  "trend": {
+    "title": "24 Saatlik Trend",
+    "legendHelp": "Değerleri göstermek veya gizlemek için etiketlere tıklayın"
+  },
+  "errors": {
+    "dataLoadFailed": "Veri yüklenemedi",
+    "tryAgainMessage": "Lütfen internet bağlantınızı kontrol edin ve tekrar deneyin",
+    "historicalDataFailed": "Geçmiş sensör verileri yüklenemedi",
+    "noDataAvailable": "Seçilen dönem için veri bulunamadı",
+    "pdfGenerationFailed": "PDF raporu oluşturulamadı"
+  },
+  "actions": {
+    "refresh": "Yenile"
+  }
+}
