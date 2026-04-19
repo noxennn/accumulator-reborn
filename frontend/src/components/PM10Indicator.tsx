@@ -1,5 +1,4 @@
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 import { Wind } from 'lucide-react';
 import InfoTooltip from './InfoTooltip';
 import StatsRow from './StatsRow';
@@ -12,8 +11,6 @@ interface PM10IndicatorProps {
 }
 
 const PM10Indicator: React.FC<PM10IndicatorProps> = ({ value, timestamp, stats }) => {
-  const { t } = useTranslation();
-
   return (
     <div className="card bg-base-100 shadow-xl h-full">
       <div className="card-body p-4">

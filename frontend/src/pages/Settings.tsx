@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Bell, BellOff, Save, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { settingsApi } from '../lib/settingsApi';

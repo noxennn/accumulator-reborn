@@ -3,7 +3,7 @@ const API_URL = 'http://localhost:8000';
 
 // Authentication API endpoints
 interface LoginCredentials {
-  username: string;  // FastAPI OAuth2 form expects "username" field
+  email: string;  // FastAPI OAuth2 form expects "username" field
   password: string;
 }
 
@@ -25,7 +25,7 @@ interface UserData {
 // Auth service functions
 export const authApi = {
   // Login function
-  async login(credentials: { email: string, password: string }): Promise<TokenResponse> {
+  async login(credentials: LoginCredentials): Promise<TokenResponse> {
     const formData = new FormData();
     formData.append('username', credentials.email); // FastAPI OAuth2 expects "username"
     formData.append('password', credentials.password);
