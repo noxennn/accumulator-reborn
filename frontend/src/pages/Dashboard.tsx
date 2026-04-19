@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import { RefreshCw } from 'lucide-react';
-import { format, subHours } from 'date-fns';
+
 import AQIIndicator from '../components/AQIIndicator';
 import CO2Indicator from '../components/CO2Indicator';
 import PM25Indicator from '../components/PM25Indicator';
@@ -11,6 +11,7 @@ import VOCIndicator from '../components/VOCIndicator';
 import AIPredictions from '../components/AIPredictions';
 import AlertIndicator from '../components/AlertIndicator';
 import { useAlerts } from '../hooks/useAlerts';
+import { useDailyStats } from '../hooks/useDailyStats';
 import { sensorApi } from '../lib/sensorApi';
 import { settingsApi } from '../lib/settingsApi';
 import { analyticsApi } from '../lib/analyticsApi';
@@ -25,6 +26,9 @@ const TREND_PERIODS = [
   { value: '2h',  label: '2 sa'  },
 ];
 
+const toHHMM = (d: Date) =>
+  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
 const Dashboard = () => {
   const { t } = useTranslation();
   const { isAuthenticated } = useAuth();
@@ -36,8 +40,23 @@ const Dashboard = () => {
   const [settings, setSettings] = useState<UserSettings | null>(null);
 
   const [trendPeriod, setTrendPeriod] = useState('15m');
+  const [startTime, setStartTime] = useState('00:00');
+  const [endTime, setEndTime]     = useState(() => toHHMM(new Date()));
+  const [timeRangeError, setTimeRangeError] = useState<string | null>(null);
 
-  const [visibleMetrics, setVisibleMetrics] = useState({
+  // Represents what's currently rendered in the chart (applied after clicking Uygula)
+  const [applied, setApplied] = useState({
+    startTime: '00:00',
+    endTime: toHHMM(new Date()),
+    trendPeriod: '15m',
+  });
+
+  const isDirty =
+    startTime !== applied.startTime ||
+    endTime   !== applied.endTime   ||
+    trendPeriod !== applied.trendPeriod;
+
+  const [visibleMetrics, setVisibleMetrics] = useState<Record<string, boolean>>({
     co2: true,
     pm25: true,
     pm10: true,
@@ -65,14 +84,33 @@ const Dashboard = () => {
   }, [t]);
 
   const fetchHistoricalData = useCallback(async () => {
+    // --- validation ---
+    const [sh, sm] = applied.startTime.split(':').map(Number);
+    const [eh, em] = applied.endTime.split(':').map(Number);
+    const startMinutes = sh * 60 + sm;
+    const endMinutes   = eh * 60 + em;
+
+    if (endMinutes <= startMinutes) {
+      setTimeRangeError('Bitiş saati başlangıç saatinden sonra olmalıdır.');
+      return;
+    }
+    if (endMinutes - startMinutes < 5) {
+      setTimeRangeError('Aralık en az 5 dakika olmalıdır.');
+      return;
+    }
+    setTimeRangeError(null);
+
+    const today = new Date();
+    const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), sh, sm, 0);
+    const endDate   = new Date(today.getFullYear(), today.getMonth(), today.getDate(), eh, em, 59);
+    const clampedEnd = endDate > today ? today : endDate;
+
     try {
       setHistLoading(true);
-      const endDate = new Date();
-      const startDate = subHours(endDate, 24);
       const rows = await analyticsApi.getAggregatedData(
         startDate.toISOString(),
-        endDate.toISOString(),
-        trendPeriod
+        clampedEnd.toISOString(),
+        applied.trendPeriod
       );
       const formatted = rows.map((r: any) => ({
         ...r,
@@ -85,7 +123,25 @@ const Dashboard = () => {
     } finally {
       setHistLoading(false);
     }
-  }, [trendPeriod, t]);
+  }, [applied, t]);
+
+  const handleApply = () => {
+    const [sh, sm] = startTime.split(':').map(Number);
+    const [eh, em] = endTime.split(':').map(Number);
+    const startMinutes = sh * 60 + sm;
+    const endMinutes   = eh * 60 + em;
+
+    if (endMinutes <= startMinutes) {
+      setTimeRangeError('Bitiş saati başlangıç saatinden sonra olmalıdır.');
+      return;
+    }
+    if (endMinutes - startMinutes < 5) {
+      setTimeRangeError('Aralık en az 5 dakika olmalıdır.');
+      return;
+    }
+    setTimeRangeError(null);
+    setApplied({ startTime, endTime, trendPeriod });
+  };
 
   useEffect(() => {
     fetchHistoricalData();
@@ -132,6 +188,8 @@ const Dashboard = () => {
   const pm10Alerts = useAlerts(latestData.pm10, thresholds.pm10, 'pm10');
   const vocAlerts  = useAlerts(latestData.voc,  thresholds.voc,  'voc');
   const allAlerts  = [...co2Alerts, ...pm25Alerts, ...pm10Alerts, ...vocAlerts];
+
+  const dailyStats = useDailyStats();
 
   const metrics = [
     { id: 'co2',  name: t('sensors.co2'),  color: '#8884d8', unit: 'ppm'   },
@@ -186,14 +244,14 @@ const Dashboard = () => {
       {/* Row 1: AQI + Air quality indicators */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <AQIIndicator value={latestData.aqi} timestamp={currentData?.timestamp} />
-        <CO2Indicator  value={latestData.co2}  timestamp={currentData?.timestamp} />
-        <PM25Indicator value={latestData.pm25} timestamp={currentData?.timestamp} />
-        <PM10Indicator value={latestData.pm10} timestamp={currentData?.timestamp} />
+        <CO2Indicator  value={latestData.co2}  timestamp={currentData?.timestamp} stats={dailyStats.co2} />
+        <PM25Indicator value={latestData.pm25} timestamp={currentData?.timestamp} stats={dailyStats.pm25} />
+        <PM10Indicator value={latestData.pm10} timestamp={currentData?.timestamp} stats={dailyStats.pm10} />
       </div>
 
       {/* Row 2: VOC + Alert */}
       <div className={`grid grid-cols-1 md:grid-cols-2 ${isAuthenticated ? 'lg:grid-cols-2' : 'lg:grid-cols-1'} gap-4`}>
-        <VOCIndicator value={latestData.voc} timestamp={currentData?.timestamp} />
+        <VOCIndicator value={latestData.voc} timestamp={currentData?.timestamp} stats={dailyStats.voc} />
         {isAuthenticated && <AlertIndicator alerts={allAlerts} />}
       </div>
 
@@ -202,12 +260,37 @@ const Dashboard = () => {
           <div className="card-body">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <h2 className="card-title text-lg">{t('trend.title')}</h2>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Time range inputs */}
+                <div className="flex items-center gap-1">
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={e => setStartTime(e.target.value)}
+                    className={`input input-bordered input-xs w-28 ${
+                      timeRangeError ? 'input-error' : ''
+                    }`}
+                    disabled={histLoading}
+                  />
+                  <span className="text-base-content/60 text-xs">—</span>
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={e => setEndTime(e.target.value)}
+                    className={`input input-bordered input-xs w-28 ${
+                      timeRangeError ? 'input-error' : ''
+                    }`}
+                    disabled={histLoading}
+                  />
+                </div>
+                {/* Bucket period */}
                 <div className="join">
                   {TREND_PERIODS.map(p => (
                     <button
                       key={p.value}
-                      className={`join-item btn btn-xs ${trendPeriod === p.value ? 'btn-primary' : 'btn-outline'}`}
+                      className={`join-item btn btn-xs ${
+                        trendPeriod === p.value ? 'btn-primary' : 'btn-outline'
+                      }`}
                       onClick={() => setTrendPeriod(p.value)}
                       disabled={histLoading}
                     >
@@ -216,7 +299,16 @@ const Dashboard = () => {
                   ))}
                 </div>
                 <button
-                  className="btn btn-ghost btn-sm"
+                  className="btn btn-primary btn-xs"
+                  onClick={handleApply}
+                  disabled={histLoading || !isDirty}
+                >
+                  {histLoading
+                    ? <RefreshCw className="w-3 h-3 animate-spin" />
+                    : 'Uygula'}
+                </button>
+                <button
+                  className="btn btn-ghost btn-xs"
                   onClick={fetchHistoricalData}
                   disabled={histLoading}
                   title="Yenile"
@@ -225,6 +317,9 @@ const Dashboard = () => {
                 </button>
               </div>
             </div>
+            {timeRangeError && (
+              <p className="text-error text-xs mt-1">{timeRangeError}</p>
+            )}
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={historicalData.length > 0 ? historicalData : []}>
@@ -280,7 +375,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <AIPredictions historicalData={historicalData} />
+        <AIPredictions historicalData={historicalData as any[]} />
       </div>
     </div>
   );

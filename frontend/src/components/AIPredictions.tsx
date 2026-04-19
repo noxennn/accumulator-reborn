@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TrendingUp, Wind, Gauge, AlertCircle } from 'lucide-react';
 import { format, subHours } from 'date-fns';
@@ -12,8 +12,25 @@ interface PredictionData {
   voc: number;
 }
 
-const calculateHourlyAverages = (data) => {
-  const groupedByHour = {};
+interface HourlyGroup {
+  co2: number[];
+  pm25: number[];
+  pm10: number[];
+  voc: number[];
+  count: number;
+  timestamp: number;
+}
+
+interface SensorItem {
+  timestamp: string;
+  co2: number;
+  pm25: number;
+  pm10: number;
+  voc: number;
+}
+
+const calculateHourlyAverages = (data: SensorItem[]) => {
+  const groupedByHour: Record<string, HourlyGroup> = {};
 
   data.forEach(item => {
     const timeString = format(new Date(item.timestamp), 'HH:00');
@@ -61,12 +78,12 @@ const makeMockData = (): PredictionData[] =>
     };
   });
 
-const AIPredictions = ({ historicalData = [] }) => {
+const AIPredictions = ({ historicalData = [] }: { historicalData: SensorItem[] }) => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [hourlyData, setHourlyData] = useState<PredictionData[]>([]);
 
-  const [visibleMetrics, setVisibleMetrics] = useState({
+  const [visibleMetrics, setVisibleMetrics] = useState<Record<string, boolean>>({
     co2: true, pm25: true, pm10: false, voc: false
   });
 
@@ -165,7 +182,7 @@ const AIPredictions = ({ historicalData = [] }) => {
                       <td key={m.id}>
                         <div className="flex items-center gap-2">
                           {m.icon}
-                          {m.fmt(row[m.id])}{m.unit}
+                          {m.fmt(row[m.id as keyof PredictionData] as number)}{m.unit}
                         </div>
                       </td>
                     ))}

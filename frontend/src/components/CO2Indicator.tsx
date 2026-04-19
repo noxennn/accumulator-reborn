@@ -2,13 +2,16 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Wind } from 'lucide-react';
 import InfoTooltip from './InfoTooltip';
+import StatsRow from './StatsRow';
+import { SensorStatistics } from '../lib/analyticsApi';
 
 interface CO2IndicatorProps {
   value: number;
   timestamp?: Date | string | null;
+  stats?: SensorStatistics | null;
 }
 
-const CO2Indicator: React.FC<CO2IndicatorProps> = ({ value, timestamp }) => {
+const CO2Indicator: React.FC<CO2IndicatorProps> = ({ value, timestamp, stats }) => {
   const { t } = useTranslation();
 
   return (
@@ -29,6 +32,7 @@ const CO2Indicator: React.FC<CO2IndicatorProps> = ({ value, timestamp }) => {
           </div>
           <div className="text-2xl font-bold">{Math.round(value)} ppm</div>
         </div>
+        {stats && <StatsRow stats={stats} unit="ppm" precision={0} />}
       </div>
     </div>
   );

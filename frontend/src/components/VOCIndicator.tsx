@@ -2,13 +2,16 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Wind } from 'lucide-react';
 import InfoTooltip from './InfoTooltip';
+import StatsRow from './StatsRow';
+import { SensorStatistics } from '../lib/analyticsApi';
 
 interface VOCIndicatorProps {
   value: number;
   timestamp?: Date | string | null;
+  stats?: SensorStatistics | null;
 }
 
-const VOCIndicator: React.FC<VOCIndicatorProps> = ({ value, timestamp }) => {
+const VOCIndicator: React.FC<VOCIndicatorProps> = ({ value, timestamp, stats }) => {
   const { t } = useTranslation();
 
   return (
@@ -29,6 +32,7 @@ const VOCIndicator: React.FC<VOCIndicatorProps> = ({ value, timestamp }) => {
           </div>
           <div className="text-2xl font-bold">{value.toFixed(2)} ppm</div>
         </div>
+        {stats && <StatsRow stats={stats} unit="ppb" precision={2} />}
       </div>
     </div>
   );

@@ -239,15 +239,53 @@ async def get_stats(metric: str, start: datetime, end: datetime, db: Session = D
         raise HTTPException(status_code=400, detail="Invalid metric")
 
     from sqlalchemy import func
+    from datetime import timezone as tz
+
+    col = getattr(models.ArduinoData, metric)
 
     result = db.query(
-        func.min(getattr(models.ArduinoData, metric)),
-        func.max(getattr(models.ArduinoData, metric)),
-        func.avg(getattr(models.ArduinoData, metric)),
-        func.stddev_pop(getattr(models.ArduinoData, metric))
+        func.min(col),
+        func.max(col),
+        func.avg(col),
+        func.stddev_pop(col)
     ).filter(models.ArduinoData.timestamp.between(start, end)).one()
 
-    return {"metric": metric, "min": result[0], "max": result[1], "avg": result[2], "stddev": result[3]}
+    min_val, max_val, avg_val, stddev_val = result
+
+    # Find the row where the metric hits its minimum
+    min_row = (
+        db.query(models.ArduinoData.timestamp)
+        .filter(models.ArduinoData.timestamp.between(start, end), col == min_val)
+        .order_by(models.ArduinoData.timestamp)
+        .first()
+    )
+    # Find the row where the metric hits its maximum
+    max_row = (
+        db.query(models.ArduinoData.timestamp)
+        .filter(models.ArduinoData.timestamp.between(start, end), col == max_val)
+        .order_by(models.ArduinoData.timestamp)
+        .first()
+    )
+
+    def _ts(row):
+        if row is None:
+            return None
+        ts = row.timestamp
+        if ts is None:
+            return None
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=tz.utc)
+        return ts.isoformat()
+
+    return {
+        "metric": metric,
+        "min": min_val,
+        "max": max_val,
+        "avg": avg_val,
+        "stddev": stddev_val,
+        "min_time": _ts(min_row),
+        "max_time": _ts(max_row),
+    }
 
 
 @app.get(f"{api_prefix}/settings", response_model=schemas.UserSettings)

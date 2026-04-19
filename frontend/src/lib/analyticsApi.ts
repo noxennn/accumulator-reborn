@@ -3,11 +3,14 @@ import { fetchWithAuth } from './api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-interface SensorStatistics {
+export interface SensorStatistics {
+  metric: string;
   min: number;
   max: number;
   avg: number;
   stddev: number;
+  min_time: string | null;
+  max_time: string | null;
 }
 
 export const analyticsApi = {

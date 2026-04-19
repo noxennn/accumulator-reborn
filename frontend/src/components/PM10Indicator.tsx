@@ -2,13 +2,16 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Wind } from 'lucide-react';
 import InfoTooltip from './InfoTooltip';
+import StatsRow from './StatsRow';
+import { SensorStatistics } from '../lib/analyticsApi';
 
 interface PM10IndicatorProps {
   value: number;
   timestamp?: Date | string | null;
+  stats?: SensorStatistics | null;
 }
 
-const PM10Indicator: React.FC<PM10IndicatorProps> = ({ value, timestamp }) => {
+const PM10Indicator: React.FC<PM10IndicatorProps> = ({ value, timestamp, stats }) => {
   const { t } = useTranslation();
 
   return (
@@ -29,6 +32,7 @@ const PM10Indicator: React.FC<PM10IndicatorProps> = ({ value, timestamp }) => {
           </div>
           <div className="text-2xl font-bold">{Math.round(value)} μg/m³</div>
         </div>
+        {stats && <StatsRow stats={stats} unit="μg/m³" precision={1} />}
       </div>
     </div>
   );
