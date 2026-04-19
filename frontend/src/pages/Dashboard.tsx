@@ -18,13 +18,7 @@ import { analyticsApi } from '../lib/analyticsApi';
 import { SensorData, UserSettings } from '../types';
 import { useAuth } from '../hooks/useAuth';
 
-const TREND_PERIODS = [
-  { value: '5m',  label: '5 dk'  },
-  { value: '15m', label: '15 dk' },
-  { value: '30m', label: '30 dk' },
-  { value: '1h',  label: '1 sa'  },
-  { value: '2h',  label: '2 sa'  },
-];
+const TREND_PERIODS = ['5m', '15m', '30m', '1h', '2h'];
 
 const toHHMM = (d: Date) =>
   `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -287,14 +281,14 @@ const Dashboard = () => {
                 <div className="join">
                   {TREND_PERIODS.map(p => (
                     <button
-                      key={p.value}
+                      key={p}
                       className={`join-item btn btn-xs ${
-                        trendPeriod === p.value ? 'btn-primary' : 'btn-outline'
+                        trendPeriod === p ? 'btn-primary' : 'btn-outline'
                       }`}
-                      onClick={() => setTrendPeriod(p.value)}
+                      onClick={() => setTrendPeriod(p)}
                       disabled={histLoading}
                     >
-                      {p.label}
+                      {t(`trend.periods.${p}`, p)}
                     </button>
                   ))}
                 </div>
@@ -305,7 +299,7 @@ const Dashboard = () => {
                 >
                   {histLoading
                     ? <RefreshCw className="w-3 h-3 animate-spin" />
-                    : 'Uygula'}
+                    : t('trend.apply')}
                 </button>
                 <button
                   className="btn btn-ghost btn-xs"

@@ -90,6 +90,10 @@
     "last7Days": "Last 7 Days",
     "last14Days": "Last 14 Days",
     "last30Days": "Last 30 Days",
+    "custom": "Custom",
+    "customStart": "Start",
+    "customEnd": "End",
+    "apply": "Apply",
     "trendAnalysis": "Trend Analysis",
     "distribution": "Distribution",
     "minimum": "Minimum",
@@ -122,7 +126,19 @@
   },
   "trend": {
     "title": "24-Hour Trend",
-    "legendHelp": "Click on labels to show or hide values"
+    "legendHelp": "Click on labels to show or hide values",
+    "apply": "Apply",
+    "periods": {
+      "5m":  "5 min",
+      "15m": "15 min",
+      "30m": "30 min",
+      "1h":  "1 hr",
+      "2h":  "2 hr",
+      "4h":  "4 hr",
+      "8h":  "8 hr",
+      "12h": "12 hr",
+      "1d":  "1 day"
+    }
   },
   "errors": {
     "dataLoadFailed": "Failed to load data",
@@ -130,6 +146,12 @@
     "historicalDataFailed": "Failed to load historical sensor data",
     "noDataAvailable": "No data available for the selected period",
     "pdfGenerationFailed": "Failed to generate PDF report"
+  },
+  "stats": {
+    "min": "Min",
+    "avg": "Avg",
+    "max": "Max",
+    "today": "today"
   },
   "actions": {
     "refresh": "Refresh"

@@ -14,15 +14,15 @@ import { analyticsApi } from '../lib/analyticsApi';
 // ── Sabitler ────────────────────────────────────────────────────────
 
 const PERIODS = [
-  { value: '5m',  label: '5 dk'   },
-  { value: '15m', label: '15 dk'  },
-  { value: '30m', label: '30 dk'  },
-  { value: '1h',  label: '1 saat' },
-  { value: '2h',  label: '2 saat' },
-  { value: '4h',  label: '4 saat' },
-  { value: '8h',  label: '8 saat' },
-  { value: '12h', label: '12 saat'},
-  { value: '1d',  label: '1 gün'  },
+  { value: '5m'  },
+  { value: '15m' },
+  { value: '30m' },
+  { value: '1h'  },
+  { value: '2h'  },
+  { value: '4h'  },
+  { value: '8h'  },
+  { value: '12h' },
+  { value: '1d'  },
 ];
 
 const PERIOD_MINUTES: Record<string, number> = {
@@ -299,7 +299,7 @@ const Analytics = () => {
                     onClick={() => setDatePreset(p)}
                     disabled={loading}
                   >
-                    {p === '7d' ? '7 Gün' : p === '14d' ? '14 Gün' : '30 Gün'}
+                    {p === '7d' ? t('analyticsPage.last7Days') : p === '14d' ? t('analyticsPage.last14Days') : t('analyticsPage.last30Days')}
                   </button>
                 ))}
                 <button
@@ -307,7 +307,7 @@ const Analytics = () => {
                   onClick={() => setDatePreset('custom')}
                   disabled={loading}
                 >
-                  Özel
+                  {t('analyticsPage.custom')}
                 </button>
               </div>
 
@@ -319,7 +319,7 @@ const Analytics = () => {
                 disabled={loading}
               >
                 {PERIODS.map(p => (
-                  <option key={p.value} value={p.value}>{p.label}</option>
+                  <option key={p.value} value={p.value}>{t(`trend.periods.${p.value}`, p.value)}</option>
                 ))}
               </select>
 
@@ -353,7 +353,7 @@ const Analytics = () => {
           {/* Satır 2: Özel tarih aralığı (sadece custom seçiliyse) */}
           {datePreset === 'custom' && (
             <div className="flex flex-wrap gap-3 items-center">
-              <label className="text-sm opacity-70">Başlangıç</label>
+              <label className="text-sm opacity-70">{t('analyticsPage.customStart')}</label>
               <input
                 type="date"
                 className="input input-bordered input-sm"
@@ -361,7 +361,7 @@ const Analytics = () => {
                 max={customEnd}
                 onChange={e => setCustomStart(e.target.value)}
               />
-              <label className="text-sm opacity-70">Bitiş</label>
+              <label className="text-sm opacity-70">{t('analyticsPage.customEnd')}</label>
               <input
                 type="date"
                 className="input input-bordered input-sm"
@@ -371,7 +371,7 @@ const Analytics = () => {
                 onChange={e => setCustomEnd(e.target.value)}
               />
               <button className="btn btn-primary btn-sm" onClick={fetchData} disabled={loading}>
-                Uygula
+                {t('analyticsPage.apply')}
               </button>
             </div>
           )}

@@ -90,6 +90,10 @@
     "last7Days": "Son 7 Gün",
     "last14Days": "Son 14 Gün",
     "last30Days": "Son 30 Gün",
+    "custom": "Özel",
+    "customStart": "Başlangıç",
+    "customEnd": "Bitiş",
+    "apply": "Uygula",
     "trendAnalysis": "Trend Analizi",
     "distribution": "Dağılım",
     "minimum": "Minimum",
@@ -122,7 +126,19 @@
   },
   "trend": {
     "title": "24 Saatlik Trend",
-    "legendHelp": "Değerleri göstermek veya gizlemek için etiketlere tıklayın"
+    "legendHelp": "Değerleri göstermek veya gizlemek için etiketlere tıklayın",
+    "apply": "Uygula",
+    "periods": {
+      "5m":  "5 dk",
+      "15m": "15 dk",
+      "30m": "30 dk",
+      "1h":  "1 sa",
+      "2h":  "2 sa",
+      "4h":  "4 sa",
+      "8h":  "8 sa",
+      "12h": "12 sa",
+      "1d":  "1 gün"
+    }
   },
   "errors": {
     "dataLoadFailed": "Veri yüklenemedi",
@@ -130,6 +146,12 @@
     "historicalDataFailed": "Geçmiş sensör verileri yüklenemedi",
     "noDataAvailable": "Seçilen dönem için veri bulunamadı",
     "pdfGenerationFailed": "PDF raporu oluşturulamadı"
+  },
+  "stats": {
+    "min": "Min",
+    "avg": "Ort",
+    "max": "Maks",
+    "today": "bugün"
   },
   "actions": {
     "refresh": "Yenile"

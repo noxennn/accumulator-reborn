@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { SensorStatistics } from '../lib/analyticsApi';
 
 interface StatsRowProps {
@@ -17,6 +18,7 @@ function fmtTime(iso: string | null | undefined): string {
 }
 
 const StatsRow: React.FC<StatsRowProps> = ({ stats, unit, precision = 1 }) => {
+  const { t } = useTranslation();
   const fmt = (v: number | null | undefined) =>
     v != null ? Number(v).toFixed(precision) : '—';
 
@@ -24,21 +26,21 @@ const StatsRow: React.FC<StatsRowProps> = ({ stats, unit, precision = 1 }) => {
     <div className="mt-3 pt-3 border-t border-base-200 grid grid-cols-3 gap-1 text-xs">
       {/* Min */}
       <div className="flex flex-col items-center gap-0.5">
-        <span className="text-info font-semibold">Min</span>
+        <span className="text-info font-semibold">{t('stats.min')}</span>
         <span className="font-bold">{fmt(stats.min)} {unit}</span>
         <span className="text-base-content/50">{fmtTime(stats.min_time)}</span>
       </div>
 
       {/* Avg */}
       <div className="flex flex-col items-center gap-0.5">
-        <span className="text-warning font-semibold">Ort</span>
+        <span className="text-warning font-semibold">{t('stats.avg')}</span>
         <span className="font-bold">{fmt(stats.avg)} {unit}</span>
-        <span className="text-base-content/50">bugün</span>
+        <span className="text-base-content/50">{t('stats.today')}</span>
       </div>
 
       {/* Max */}
       <div className="flex flex-col items-center gap-0.5">
-        <span className="text-error font-semibold">Max</span>
+        <span className="text-error font-semibold">{t('stats.max')}</span>
         <span className="font-bold">{fmt(stats.max)} {unit}</span>
         <span className="text-base-content/50">{fmtTime(stats.max_time)}</span>
       </div>
