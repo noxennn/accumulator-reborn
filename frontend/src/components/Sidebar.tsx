@@ -9,7 +9,7 @@ const Sidebar = () => {
   const { isAuthenticated } = useAuth();
   
   return (
-    <div className="h-screen w-64 bg-base-200 p-4 flex flex-col">
+    <div className="sticky top-0 h-screen w-64 bg-base-200 p-4 flex flex-col shrink-0">
       <div className="flex items-center gap-2 mb-8">
         <Wind className="w-8 h-8 text-primary" />
         <div>

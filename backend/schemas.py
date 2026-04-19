@@ -1,6 +1,15 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def _utc_iso(v: datetime) -> str:
+    if v is None:
+        return None
+    if v.tzinfo is None:
+        v = v.replace(tzinfo=timezone.utc)
+    return v.isoformat()
+
 
 class SensorData(BaseModel):
     timestamp: datetime
@@ -8,6 +17,9 @@ class SensorData(BaseModel):
     voc: float
     pm25: float
     pm10: float
+
+    @field_serializer('timestamp')
+    def ser_ts(self, v: datetime) -> str: return _utc_iso(v)
 
     class Config:
         from_attributes = True
@@ -18,6 +30,9 @@ class PartialSensorData(BaseModel):
     voc: float
     pm25: float
     pm10: float
+
+    @field_serializer('timestamp')
+    def ser_ts(self, v: datetime) -> str: return _utc_iso(v)
 
     class Config:
         from_attributes = True
@@ -39,6 +54,9 @@ class Alert(BaseModel):
     value: float
     threshold: float
     acknowledged: Optional[bool] = False
+
+    @field_serializer('timestamp')
+    def ser_ts(self, v: datetime) -> str: return _utc_iso(v)
 
     class Config:
         from_attributes = True
@@ -68,6 +86,9 @@ class AIOutputBase(BaseModel):
     pm25: Optional[float]
     pm10: Optional[float]
     prediction: str
+
+    @field_serializer('timestamp')
+    def ser_ts(self, v: datetime) -> str: return _utc_iso(v)
 
     class Config:
         from_attributes = True

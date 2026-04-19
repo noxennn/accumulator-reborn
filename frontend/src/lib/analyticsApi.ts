@@ -11,6 +11,13 @@ interface SensorStatistics {
 }
 
 export const analyticsApi = {
+  async getAggregatedData(start: string, end: string, period: string) {
+    const url = `${API_URL}/api/sensors/aggregated?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&period=${period}`;
+    const response = await fetchWithAuth(url);
+    if (!response.ok) throw new Error('Failed to fetch aggregated data');
+    return response.json();
+  },
+
   // Get historical sensor data for analytics with date range
   async getAnalyticsData(start: string, end: string) {
     const url = `${API_URL}/api/sensors/history?start=${start}&end=${end}`;

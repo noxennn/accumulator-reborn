@@ -151,12 +151,60 @@ async def websocket_endpoint(websocket: WebSocket):
 async def get_data(
     start: Optional[datetime] = Query(None),
     end: Optional[datetime] = Query(None),
+    limit: int = Query(default=500, le=5000),
     db: Session = Depends(get_db)
 ):
     query = db.query(models.ArduinoData).order_by(models.ArduinoData.timestamp.desc())
     if start and end:
         query = query.filter(models.ArduinoData.timestamp.between(start, end))
-    return query.limit(180).all()
+    return query.limit(limit).all()
+
+
+@app.get(f"{api_prefix}/sensors/aggregated")
+async def get_aggregated_data(
+    start: datetime,
+    end: datetime,
+    period: str = Query(default="1h"),
+    db: Session = Depends(get_db)
+):
+    period_seconds = {
+        "5m": 300, "15m": 900, "30m": 1800,
+        "1h": 3600, "2h": 7200, "4h": 14400,
+        "8h": 28800, "12h": 43200, "1d": 86400
+    }.get(period, 3600)
+
+    from sqlalchemy import func, text as sa_text
+
+    bucket = func.from_unixtime(
+        func.floor(func.unix_timestamp(models.ArduinoData.timestamp) / period_seconds) * period_seconds
+    )
+
+    rows = db.query(
+        bucket.label("period"),
+        func.round(func.avg(models.ArduinoData.co2),  1).label("co2"),
+        func.round(func.avg(models.ArduinoData.voc),  1).label("voc"),
+        func.round(func.avg(models.ArduinoData.pm25), 2).label("pm25"),
+        func.round(func.avg(models.ArduinoData.pm10), 2).label("pm10"),
+        func.count(models.ArduinoData.data_id).label("n")
+    ).filter(
+        models.ArduinoData.timestamp.between(start, end)
+    ).group_by(sa_text("period")).order_by(sa_text("period")).all()
+
+    from datetime import timezone as tz
+    return [
+        {
+            "timestamp": (
+                row.period.replace(tzinfo=tz.utc).isoformat()
+                if hasattr(row.period, "isoformat") else str(row.period)
+            ),
+            "co2":  float(row.co2)  if row.co2  is not None else None,
+            "voc":  float(row.voc)  if row.voc  is not None else None,
+            "pm25": float(row.pm25) if row.pm25 is not None else None,
+            "pm10": float(row.pm10) if row.pm10 is not None else None,
+            "sample_count": row.n,
+        }
+        for row in rows
+    ]
 
 
 @app.get(f"{api_prefix}/sensors/summary", response_model=List[schemas.PartialSensorData])

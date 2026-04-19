@@ -89,9 +89,8 @@ const AIPredictions = ({ historicalData = [] }) => {
 
         const endDate = new Date();
         const startDate = subHours(endDate, 7);
-        const turkishOffset = 3 * 60 * 60 * 1000;
-        const formattedStart = new Date(startDate.getTime() + turkishOffset).toISOString();
-        const formattedEnd   = new Date(endDate.getTime()   + turkishOffset).toISOString();
+        const formattedStart = startDate.toISOString();
+        const formattedEnd   = endDate.toISOString();
 
         const data = await sensorApi.getHistoricalData(formattedStart, formattedEnd);
 

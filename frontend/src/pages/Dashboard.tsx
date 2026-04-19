@@ -13,13 +13,17 @@ import AlertIndicator from '../components/AlertIndicator';
 import { useAlerts } from '../hooks/useAlerts';
 import { sensorApi } from '../lib/sensorApi';
 import { settingsApi } from '../lib/settingsApi';
+import { analyticsApi } from '../lib/analyticsApi';
 import { SensorData, UserSettings } from '../types';
 import { useAuth } from '../hooks/useAuth';
 
-const convertToTurkishTime = (date: Date) => {
-  const turkishOffset = 3 * 60 * 60 * 1000;
-  return new Date(date.getTime() + turkishOffset).toISOString();
-};
+const TREND_PERIODS = [
+  { value: '5m',  label: '5 dk'  },
+  { value: '15m', label: '15 dk' },
+  { value: '30m', label: '30 dk' },
+  { value: '1h',  label: '1 sa'  },
+  { value: '2h',  label: '2 sa'  },
+];
 
 const Dashboard = () => {
   const { t } = useTranslation();
@@ -30,6 +34,8 @@ const Dashboard = () => {
   const [currentData, setCurrentData] = useState<SensorData | null>(null);
   const [historicalData, setHistoricalData] = useState<SensorData[]>([]);
   const [settings, setSettings] = useState<UserSettings | null>(null);
+
+  const [trendPeriod, setTrendPeriod] = useState('15m');
 
   const [visibleMetrics, setVisibleMetrics] = useState({
     co2: true,
@@ -63,25 +69,23 @@ const Dashboard = () => {
       setHistLoading(true);
       const endDate = new Date();
       const startDate = subHours(endDate, 24);
-      const data = await sensorApi.getHistoricalData(
-        convertToTurkishTime(startDate),
-        convertToTurkishTime(endDate)
+      const rows = await analyticsApi.getAggregatedData(
+        startDate.toISOString(),
+        endDate.toISOString(),
+        trendPeriod
       );
-      const formattedData = data.map(record => ({
-        ...record,
-        time: new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        originalTimestamp: new Date(record.timestamp).getTime()
+      const formatted = rows.map((r: any) => ({
+        ...r,
+        time: new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       }));
-      setHistoricalData(
-        [...formattedData].sort((a, b) => a.originalTimestamp - b.originalTimestamp)
-      );
+      setHistoricalData(formatted);
     } catch (err) {
       console.error('Error fetching historical sensor data:', err);
       setError(t('errors.historicalDataFailed'));
     } finally {
       setHistLoading(false);
     }
-  }, [t]);
+  }, [trendPeriod, t]);
 
   useEffect(() => {
     fetchHistoricalData();
@@ -196,16 +200,30 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="card bg-base-100 shadow-xl">
           <div className="card-body">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <h2 className="card-title text-lg">{t('trend.title')}</h2>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={fetchHistoricalData}
-                disabled={histLoading}
-                title="Yenile"
-              >
-                <RefreshCw className={`w-4 h-4 ${histLoading ? 'animate-spin' : ''}`} />
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="join">
+                  {TREND_PERIODS.map(p => (
+                    <button
+                      key={p.value}
+                      className={`join-item btn btn-xs ${trendPeriod === p.value ? 'btn-primary' : 'btn-outline'}`}
+                      onClick={() => setTrendPeriod(p.value)}
+                      disabled={histLoading}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={fetchHistoricalData}
+                  disabled={histLoading}
+                  title="Yenile"
+                >
+                  <RefreshCw className={`w-4 h-4 ${histLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
             </div>
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -214,6 +232,9 @@ const Dashboard = () => {
                   <XAxis dataKey="time" stroke="#6b7280" tick={{ fill: '#6b7280' }} />
                   <YAxis stroke="#6b7280" tick={{ fill: '#6b7280' }} />
                   <Tooltip
+                    formatter={(v: number, name: string) => [
+                      typeof v === 'number' ? +v.toFixed(1) : v, name
+                    ]}
                     contentStyle={{
                       backgroundColor: 'rgba(255, 255, 255, 0.9)',
                       border: '1px solid #e5e7eb',

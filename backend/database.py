@@ -22,7 +22,12 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     DATABASE_URL = f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}"
 
-engine = create_engine(DATABASE_URL)
+# Force MySQL session timezone to UTC so that unix_timestamp() / from_unixtime()
+# correctly interpret the UTC datetimes stored by the application.
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"init_command": "SET time_zone='+00:00'"}
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def create_database_tables():
