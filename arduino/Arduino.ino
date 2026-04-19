@@ -18,7 +18,7 @@ char pass[] = "Yurt--2017";
 
 // WebSocket Sunucu Bilgileri
 #define WS_HOST "192.168.0.99"
-#define WS_PORT 8765
+#define WS_PORT 8000
 
 WiFiClient client;
 
@@ -58,7 +58,7 @@ void wsSendText(const String& msg) {
 
 // HTTP Upgrade handshake'i gerçekleştirir
 bool wsHandshake() {
-  client.print("GET / HTTP/1.1\r\n");
+  client.print("GET /ws HTTP/1.1\r\n");
   client.print("Host: " WS_HOST ":" + String(WS_PORT) + "\r\n");
   client.print("Upgrade: websocket\r\n");
   client.print("Connection: Upgrade\r\n");

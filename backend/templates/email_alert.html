@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Alert Notification</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+      padding: 20px;
+      color: #333;
+    }
+    .container {
+      max-width: 600px;
+      background-color: #ffffff;
+      margin: 0 auto;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    .header h1 {
+      color: #e53935;
+      border-bottom: 1px solid #ddd;
+    }
+    .alert-box {
+      background-color: #ffe0e0;
+      padding: 15px;
+      border-left: 5px solid #e53935;
+      margin: 20px 0;
+    }
+    .info-box {
+      background-color: #78c2f3;
+      padding: 15px;
+      border-left: 5px solid #167fc5;
+      margin: 20px 0;
+    }
+    .alert-box.ok {
+      background-color: #e0ffe0;
+      border-left: 5px solid #4caf50;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>⚠️ Sensör Alarmı</h1>
+    </div>
+    <p>Sayın kullanıcı,</p>
+    {% set th_co2 = thresholds.get('co2', 400) %}
+    {% set th_pm25 = thresholds.get('pm25', 35) %}
+    {% set th_pm10 = thresholds.get('pm10', 50) %}
+    {% set th_voc = thresholds.get('voc', 500) %}
+    
+    
+
+    <div class="info-box">
+      <strong>🕒 Zaman:</strong> {{ timestamp }}<br>
+    </div>
+
+    <p><strong>Belirlediğiniz eşik değerleri aşılanlar:</strong></p>
+    {% if co2 is not none and co2 > th_co2 %}
+    <div class="alert-box">
+      <strong>⚠️ 💨 CO₂:</strong> {{ co2 }} ppm (Eşik: {{ th_co2 }})
+    </div>
+    {% endif %}
+
+    {% if pm25 is not none and pm25 > th_pm25 %}
+    <div class="alert-box">
+      <strong>⚠️ 🌫️ PM2.5:</strong> {{ pm25 }} µg/m³ (Eşik: {{ th_pm25 }})
+    </div>
+    {% endif %}
+
+    {% if pm10 is not none and pm10 > th_pm10 %}
+    <div class="alert-box">
+      <strong>⚠️ 🌫️ PM10:</strong> {{ pm10 }} µg/m³ (Eşik: {{ th_pm10 }})
+    </div>
+    {% endif %}
+
+    {% if voc is not none and voc > th_voc %}
+    <div class="alert-box">
+      <strong>⚠️ 🧪 VOC:</strong> {{ voc }} ppb (Eşik: {{ th_voc }})
+    </div>
+    {% endif %}
+    
+    <p><strong>Aşılmayan değerler:</strong></p>
+    
+    {% if co2 is not none and co2 <= th_co2 %}
+    <div class="alert-box ok">
+      💨 CO₂: {{ co2 }} ppm — Eşik aşılmadı (≤ {{ th_co2 }})
+    </div>
+    {% endif %}
+    
+    {% if pm25 is not none and pm25 <= th_pm25 %}
+    <div class="alert-box ok">
+      🌫️ PM2.5: {{ pm25 }} µg/m³ — Eşik aşılmadı (≤ {{ th_pm25 }})
+    </div>
+    {% endif %}
+    
+    {% if pm10 is not none and pm10 <= th_pm10 %}
+    <div class="alert-box ok">
+      🌫️ PM10: {{ pm10 }} µg/m³ — Eşik aşılmadı (≤ {{ th_pm10 }})
+    </div>
+    {% endif %}
+    
+    {% if voc is not none and voc <= th_voc %}
+    <div class="alert-box ok">
+      🧪 VOC: {{ voc }} ppb — Eşik aşılmadı (≤ {{ th_voc }})
+    </div>
+    {% endif %}
+    
+
+    <p>Lütfen gerekli önlemleri alınız.</p>
+    <p>Saygılarımızla,<br>Microprocessors Accumulator Sistemi</p>
+  </div>
+</body>
+</html>
