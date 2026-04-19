@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { useTranslation } from 'react-i18next';
+import { RefreshCw } from 'lucide-react';
 import { format, subHours } from 'date-fns';
 import AQIIndicator from '../components/AQIIndicator';
 import CO2Indicator from '../components/CO2Indicator';
@@ -24,6 +25,7 @@ const Dashboard = () => {
   const { t } = useTranslation();
   const { isAuthenticated } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [histLoading, setHistLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentData, setCurrentData] = useState<SensorData | null>(null);
   const [historicalData, setHistoricalData] = useState<SensorData[]>([]);
@@ -56,33 +58,36 @@ const Dashboard = () => {
     return () => clearInterval(intervalId);
   }, [t]);
 
-  useEffect(() => {
-    const fetchHistoricalData = async () => {
-      try {
-        setLoading(true);
-        const endDate = new Date();
-        const startDate = subHours(endDate, 24);
-        const data = await sensorApi.getHistoricalData(
-          convertToTurkishTime(startDate),
-          convertToTurkishTime(endDate)
-        );
-        const formattedData = data.map(record => ({
-          ...record,
-          time: new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          originalTimestamp: new Date(record.timestamp).getTime()
-        }));
-        setHistoricalData(
-          [...formattedData].sort((a, b) => a.originalTimestamp - b.originalTimestamp)
-        );
-      } catch (err) {
-        console.error('Error fetching historical sensor data:', err);
-        setError(t('errors.historicalDataFailed'));
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchHistoricalData();
+  const fetchHistoricalData = useCallback(async () => {
+    try {
+      setHistLoading(true);
+      const endDate = new Date();
+      const startDate = subHours(endDate, 24);
+      const data = await sensorApi.getHistoricalData(
+        convertToTurkishTime(startDate),
+        convertToTurkishTime(endDate)
+      );
+      const formattedData = data.map(record => ({
+        ...record,
+        time: new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        originalTimestamp: new Date(record.timestamp).getTime()
+      }));
+      setHistoricalData(
+        [...formattedData].sort((a, b) => a.originalTimestamp - b.originalTimestamp)
+      );
+    } catch (err) {
+      console.error('Error fetching historical sensor data:', err);
+      setError(t('errors.historicalDataFailed'));
+    } finally {
+      setHistLoading(false);
+    }
   }, [t]);
+
+  useEffect(() => {
+    fetchHistoricalData();
+    const intervalId = setInterval(fetchHistoricalData, 60000);
+    return () => clearInterval(intervalId);
+  }, [fetchHistoricalData]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -191,7 +196,17 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="card bg-base-100 shadow-xl">
           <div className="card-body">
-            <h2 className="card-title text-lg">{t('trend.title')}</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="card-title text-lg">{t('trend.title')}</h2>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={fetchHistoricalData}
+                disabled={histLoading}
+                title="Yenile"
+              >
+                <RefreshCw className={`w-4 h-4 ${histLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={historicalData.length > 0 ? historicalData : []}>
@@ -211,11 +226,12 @@ const Dashboard = () => {
                     wrapperStyle={{ cursor: 'pointer' }}
                     formatter={(value, entry) => {
                       const metricId = entry.dataKey as string;
+                      const active = metricId && visibleMetrics[metricId];
                       return (
                         <span style={{
-                          color: metricId && visibleMetrics[metricId] ? '#000000' : '#999999',
+                          opacity: active ? 1 : 0.4,
                           margin: '0 8px',
-                          fontWeight: metricId && visibleMetrics[metricId] ? 'bold' : 'normal'
+                          fontWeight: active ? 'bold' : 'normal'
                         }}>
                           {value}
                         </span>

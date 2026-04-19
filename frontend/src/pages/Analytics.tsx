@@ -428,9 +428,9 @@ const Analytics = () => {
       )}
       
       <div className="flex flex-wrap gap-4 items-center justify-between">
-        <div className="flex flex-wrap gap-4 items-center">
-          <select 
-            className="select select-bordered w-full max-w-xs"
+        <div className="flex flex-row gap-4 items-center">
+          <select
+            className="select select-bordered"
             value={dateRange}
             onChange={(e) => setDateRange(e.target.value)}
             disabled={loading}
@@ -441,7 +441,7 @@ const Analytics = () => {
           </select>
 
           <select
-            className="select select-bordered w-full max-w-xs"
+            className="select select-bordered"
             value={chartType}
             onChange={(e) => setChartType(e.target.value as 'line' | 'area' | 'composed')}
             disabled={loading}
