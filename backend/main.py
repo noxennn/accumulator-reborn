@@ -126,6 +126,21 @@ async def websocket_endpoint(websocket: WebSocket):
                     logger.warning(f"Incomplete sensor data: {data}")
                     continue
 
+                # ── Server-side doğrulama (CCS811/PMS5003 datasheet aralıkları) ──
+                # CO2: 400-8192 ppm, VOC: 0-1187 ppb, PM2.5: 0-1000, PM10: 0-1000
+                if not (400 <= co2 <= 8192):
+                    logger.warning(f"CO2 out of range ({co2}), discarded")
+                    continue
+                if not (0 <= voc <= 1187):
+                    logger.warning(f"VOC out of range ({voc}), discarded")
+                    continue
+                if not (0 <= pm25 <= 1000):
+                    logger.warning(f"PM2.5 out of range ({pm25}), discarded")
+                    continue
+                if not (0 <= pm10 <= 1000):
+                    logger.warning(f"PM10 out of range ({pm10}), discarded")
+                    continue
+
                 now_utc = datetime.now(timezone.utc)
                 db.add(models.ArduinoData(
                     timestamp=now_utc, co2=co2, voc=voc, pm25=pm25, pm10=pm10

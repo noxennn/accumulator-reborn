@@ -2,6 +2,7 @@
 #include <Adafruit_CCS811.h>
 #include <PMS.h>
 #include <WiFiEspAT.h>
+#include <EEPROM.h>
 
 // Sensör Nesneleri
 Adafruit_CCS811 ccs;
@@ -32,6 +33,149 @@ bool  pmsOk = false;
 
 unsigned long sonGonderimZamani = 0;
 #define GONDERIM_ARALIGI 2000  // ms
+
+// ══════════════════════════════════════════════════════════════════
+//  CCS811 Enterprise-Grade Filtreleme Sistemi
+//  Kaynak: Adafruit, ESPHome, ScioSense Application Note, maarten-pennings/CCS811
+// ══════════════════════════════════════════════════════════════════
+
+// ── 1) Warm-up süresi (Adafruit: her açılışta 20 dk ısınma gerekli) ──
+#define CCS_WARMUP_MS   (20UL * 60UL * 1000UL)  // 20 dakika
+unsigned long ccsStartTime = 0;  // setup() zamanı
+
+// ── 2) Baseline kaydet/geri yükle (ESPHome yaklaşımı) ──────────
+#define EEPROM_BASELINE_ADDR   0    // 2 byte baseline + 1 byte magic
+#define EEPROM_MAGIC           0xA5
+#define BASELINE_SAVE_INTERVAL (60UL * 60UL * 1000UL)  // Her 1 saatte kaydet
+unsigned long lastBaselineSave = 0;
+
+void saveBaseline() {
+  uint16_t baseline = ccs.getBaseline();
+  // update() sadece değer değiştiyse yazar → EEPROM ömrünü korur
+  EEPROM.update(EEPROM_BASELINE_ADDR,     baseline & 0xFF);
+  EEPROM.update(EEPROM_BASELINE_ADDR + 1, (baseline >> 8) & 0xFF);
+  EEPROM.update(EEPROM_BASELINE_ADDR + 2, EEPROM_MAGIC);
+  Serial.print("Baseline kaydedildi: 0x");
+  Serial.println(baseline, HEX);
+}
+
+bool restoreBaseline() {
+  if (EEPROM.read(EEPROM_BASELINE_ADDR + 2) != EEPROM_MAGIC) return false;
+  uint16_t baseline = EEPROM.read(EEPROM_BASELINE_ADDR) |
+                      (EEPROM.read(EEPROM_BASELINE_ADDR + 1) << 8);
+  ccs.setBaseline(baseline);
+  Serial.print("Baseline geri yuklendi: 0x");
+  Serial.println(baseline, HEX);
+  return true;
+}
+
+// ── 3) Datasheet aralık kontrolü ────────────────────────────────
+//  CO2: 400-8192 ppm,  TVOC: 0-1187 ppb (CCS811B datasheet)
+#define CO2_MIN   400
+#define CO2_MAX   8192
+#define VOC_MIN   0
+#define VOC_MAX   1187
+
+bool ccsRangeValid(int rawCo2, int rawVoc) {
+  return (rawCo2 >= CO2_MIN && rawCo2 <= CO2_MAX &&
+          rawVoc >= VOC_MIN && rawVoc <= VOC_MAX);
+}
+
+// ── 4) EMA filtresi (Exponential Moving Average) ────────────────
+//  SMA (basit ortalama) yerine EMA kullanıyoruz çünkü:
+//  - Sabit hafıza (buffer dizisi yok, sadece 2 float)
+//  - Gerçek değişimlere daha hızlı tepki verir
+//  - Endüstriyel sensör filtrelemesinde standart yaklaşım
+//  alpha=0.3  →  yeni değer %30, eski ortalama %70 ağırlıklı
+#define EMA_ALPHA  0.3f
+
+float emaCo2 = -1;   // -1 = henüz başlatılmadı
+float emaVoc = -1;
+
+// ── 5) Rate-of-Change limiter ───────────────────────────────────
+//  Fiziksel kısıt: normal bir odada CO2, 2 sn'de en fazla ~80 ppm değişebilir.
+//  Bunun üzerindeki atlama sensör artefaktıdır.
+#define CO2_MAX_RATE  80    // ppm/okuma (2 sn aralıkla)
+#define VOC_MAX_RATE  30    // ppb/okuma
+
+int lastValidCo2 = -1;
+int lastValidVoc = -1;
+
+// ── 6) Consecutive-spike sayacı ─────────────────────────────────
+//  Eğer 5 ardışık okuma da "spike" geliyorsa, ortam gerçekten değişmiş
+//  olabilir.  Bu durumda EMA'yı sıfırla ve yeni değeri kabul et.
+#define MAX_CONSECUTIVE_REJECTS  5
+uint8_t consecutiveRejects = 0;
+
+// ── Ana filtre fonksiyonu ───────────────────────────────────────
+bool ccsFilter(int rawCo2, int rawVoc) {
+
+  // Warm-up devam ediyorsa hiçbir değer gönderme
+  if (millis() - ccsStartTime < CCS_WARMUP_MS) {
+    Serial.println("[CCS] Isinma suresi (20dk), olcum bekleniyor...");
+    return false;
+  }
+
+  // Datasheet aralık kontrolü
+  if (!ccsRangeValid(rawCo2, rawVoc)) {
+    Serial.print("[CCS] Aralik disi: CO2=");
+    Serial.print(rawCo2); Serial.print(" VOC="); Serial.println(rawVoc);
+    return false;
+  }
+
+  // Reset değeri tespiti (400 ± 15 ppm ve VOC==0)
+  if (rawCo2 <= 415 && rawVoc == 0) {
+    Serial.println("[CCS] Reset degeri tespit edildi, atlandi.");
+    consecutiveRejects++;
+    return false;
+  }
+
+  // Rate-of-change kontrolü (ilk geçerli okumadan sonra aktif)
+  if (lastValidCo2 >= 0) {
+    int deltaCo2 = abs(rawCo2 - lastValidCo2);
+    int deltaVoc = abs(rawVoc - lastValidVoc);
+
+    if (deltaCo2 > CO2_MAX_RATE || deltaVoc > VOC_MAX_RATE) {
+      consecutiveRejects++;
+      Serial.print("[CCS] Ani degisim atildi: dCO2=");
+      Serial.print(deltaCo2); Serial.print(" dVOC="); Serial.print(deltaVoc);
+      Serial.print(" (ardisik:"); Serial.print(consecutiveRejects);
+      Serial.println(")");
+
+      // Çok fazla ardışık red → ortam gerçekten değişmiş olabilir
+      if (consecutiveRejects >= MAX_CONSECUTIVE_REJECTS) {
+        Serial.println("[CCS] Ardisik red limiti asildi, EMA sifirlaniyor.");
+        emaCo2 = rawCo2;
+        emaVoc = rawVoc;
+        lastValidCo2 = rawCo2;
+        lastValidVoc = rawVoc;
+        consecutiveRejects = 0;
+        co2 = rawCo2;
+        voc = rawVoc;
+        return true;
+      }
+      return false;
+    }
+  }
+
+  // Geçerli okuma — EMA uygula
+  consecutiveRejects = 0;
+
+  if (emaCo2 < 0) {
+    // İlk geçerli okuma → EMA'yı başlat
+    emaCo2 = rawCo2;
+    emaVoc = rawVoc;
+  } else {
+    emaCo2 = EMA_ALPHA * rawCo2 + (1.0f - EMA_ALPHA) * emaCo2;
+    emaVoc = EMA_ALPHA * rawVoc + (1.0f - EMA_ALPHA) * emaVoc;
+  }
+
+  lastValidCo2 = rawCo2;
+  lastValidVoc = rawVoc;
+  co2 = (int)(emaCo2 + 0.5f);
+  voc = (int)(emaVoc + 0.5f);
+  return true;
+}
 
 // ── WebSocket yardımcı fonksiyonları ─────────────────────────────
 
@@ -221,7 +365,15 @@ void setup() {
 
   if (!ccs.begin()) {
     Serial.println("UYARI: CCS811 bulunamadi!");
+  } else {
+    // Önceden kaydedilmiş baseline'ı geri yükle
+    if (restoreBaseline()) {
+      Serial.println("CCS811 baseline EEPROM'dan yuklendi.");
+    } else {
+      Serial.println("CCS811 baseline bulunamadi, ilk kalibrasyonda kaydedilecek.");
+    }
   }
+  ccsStartTime = millis();  // warm-up zamanlayıcısı başlat
 
   // ESP8266 boot
   Serial.println("ESP8266 baslatiliyor...");
@@ -272,9 +424,9 @@ void loop() {
 
   // CCS811 oku
   if (ccs.available() && !ccs.readData()) {
-    co2  = ccs.geteCO2();
-    voc  = ccs.getTVOC();
-    ccsOk = true;
+    int rawCo2 = ccs.geteCO2();
+    int rawVoc = ccs.getTVOC();
+    ccsOk = ccsFilter(rawCo2, rawVoc);
   }
 
   // PMS5003 oku
@@ -295,6 +447,12 @@ void loop() {
       return; // Bu turda gönderme yapma, sonraki iterasyonda devam et
     }
 
+    // Sensör hazır değilse gönderme
+    if (!ccsOk || !pmsOk) {
+      Serial.println("Sensor hazir degil, gonderim atlandi.");
+      return;
+    }
+
     // JSON paketi oluştur
     String json = "{";
     json += "\"co2\":"  + String(co2)  + ",";
@@ -307,5 +465,12 @@ void loop() {
 
     // Serial monitor'e de yaz
     Serial.println(json);
+  }
+
+  // ── Periyodik baseline kaydetme (her 1 saatte) ──
+  if (millis() - ccsStartTime >= CCS_WARMUP_MS &&
+      millis() - lastBaselineSave >= BASELINE_SAVE_INTERVAL) {
+    lastBaselineSave = millis();
+    saveBaseline();
   }
 }

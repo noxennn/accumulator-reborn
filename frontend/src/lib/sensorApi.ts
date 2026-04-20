@@ -1,15 +1,7 @@
 // Service for sensor-related API operations
 import { fetchWithAuth } from './api';
-import { addHours } from 'date-fns';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-// Helper function to convert dates to Turkish time (UTC+3)
-export const convertToTurkishTime = (date: Date): string => {
-  // Add 3 hours to convert to Turkish time (UTC+3)
-  const turkishDate = addHours(date, 3);
-  return turkishDate.toISOString();
-};
 
 export const sensorApi = {
   // Get current sensor data
