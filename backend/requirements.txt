@@ -9,4 +9,6 @@ python-dotenv==1.2.1
 fastapi-mail==1.6.2
 Jinja2==3.1.6
 joblib==1.5.3
+scikit-learn==1.8.0
+PyMySQL==1.1.2
 python-multipart==0.0.20

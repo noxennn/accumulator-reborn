@@ -1,5 +1,5 @@
 // API endpoint configuration
-const API_URL = 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 // Authentication API endpoints
 interface LoginCredentials {
@@ -135,7 +135,7 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}) {
 // API for settings and other data
 export const api = {
   async getSettings() {
-    const response = await fetchWithAuth(`${API_URL}/api/settings`);
+    const response = await fetchWithAuth(`${API_URL}/air/settings`);
     if (!response.ok) {
       throw new Error('Failed to fetch settings');
     }
@@ -143,7 +143,7 @@ export const api = {
   },
 
   async updateSettings(settings: any) {
-    const response = await fetchWithAuth(`${API_URL}/api/settings`, {
+    const response = await fetchWithAuth(`${API_URL}/air/settings`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -41,7 +41,7 @@ def get_db():
     finally:
         db.close()
 
-api_prefix = "/api"
+api_prefix = "/air"
 
 
 async def check_and_alert(co2: float, voc: float, pm25: float, pm10: float, now_utc: datetime):
@@ -340,7 +340,7 @@ def update_user_settings(
     return settings
 
 
-@app.get("/api/alerts/unacknowledged", response_model=List[schemas.Alert])
+@app.get("/air/alerts/unacknowledged", response_model=List[schemas.Alert])
 def get_user_unacknowledged_alerts(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
@@ -351,7 +351,7 @@ def get_user_unacknowledged_alerts(
     ).order_by(models.Alert.timestamp.desc()).all()
 
 
-@app.post("/api/alerts/acknowledge", response_model=schemas.Alert)
+@app.post("/air/alerts/acknowledge", response_model=schemas.Alert)
 def acknowledge_alert(
     request: schemas.AlertAcknowledgeRequest,
     db: Session = Depends(get_db),
@@ -371,7 +371,7 @@ def acknowledge_alert(
     return alert
 
 
-@app.post("/api/alerts/acknowledgeall")
+@app.post("/air/alerts/acknowledgeall")
 def acknowledge_all_alerts(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)

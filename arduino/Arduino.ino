@@ -18,8 +18,8 @@ char pass[] = "Yurt--2017";
 #define PMS_SET_PIN 7
 
 // WebSocket Sunucu Bilgileri
-#define WS_HOST "192.168.0.99"
-#define WS_PORT 8000
+#define WS_HOST "air.aliburakpekisik.com"
+#define WS_PORT 80
 
 WiFiClient client;
 

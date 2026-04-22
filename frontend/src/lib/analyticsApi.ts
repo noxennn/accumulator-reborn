@@ -15,7 +15,7 @@ export interface SensorStatistics {
 
 export const analyticsApi = {
   async getAggregatedData(start: string, end: string, period: string) {
-    const url = `${API_URL}/api/sensors/aggregated?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&period=${period}`;
+    const url = `${API_URL}/air/sensors/aggregated?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&period=${period}`;
     const response = await fetchWithAuth(url);
     if (!response.ok) throw new Error('Failed to fetch aggregated data');
     return response.json();
@@ -23,7 +23,7 @@ export const analyticsApi = {
 
   // Get historical sensor data for analytics with date range
   async getAnalyticsData(start: string, end: string) {
-    const url = `${API_URL}/api/sensors/history?start=${start}&end=${end}`;
+    const url = `${API_URL}/air/sensors/history?start=${start}&end=${end}`;
     
     const response = await fetchWithAuth(url);
     
@@ -36,7 +36,7 @@ export const analyticsApi = {
   
   // Get statistics for a specific metric
   async getMetricStats(metricId: string, start: string, end: string): Promise<SensorStatistics> {
-    const url = `${API_URL}/api/stats?metric=${metricId}&start=${start}&end=${end}`;
+    const url = `${API_URL}/air/stats?metric=${metricId}&start=${start}&end=${end}`;
     
     const response = await fetchWithAuth(url);
     

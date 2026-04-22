@@ -7,7 +7,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 export const settingsApi = {
   // Get user settings
   async getSettings(): Promise<UserSettings> {
-    const response = await fetchWithAuth(`${API_URL}/api/settings`);
+    const response = await fetchWithAuth(`${API_URL}/air/settings`);
     
     if (!response.ok) {
       throw new Error('Failed to fetch settings');
@@ -18,7 +18,7 @@ export const settingsApi = {
 
   // Update user settings
   async updateSettings(settings: Partial<UserSettings>): Promise<UserSettings> {
-    const response = await fetchWithAuth(`${API_URL}/api/settings`, {
+    const response = await fetchWithAuth(`${API_URL}/air/settings`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -6,7 +6,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 export const sensorApi = {
   // Get current sensor data
   async getCurrentData() {
-    const response = await fetchWithAuth(`${API_URL}/api/sensors/current`);
+    const response = await fetchWithAuth(`${API_URL}/air/sensors/current`);
     
     if (!response.ok) {
       throw new Error('Failed to fetch current sensor data');
@@ -17,7 +17,7 @@ export const sensorApi = {
 
   // Get historical sensor data with optional date range
   async getHistoricalData(start?: string, end?: string) {
-    let url = `${API_URL}/api/sensors/history`;
+    let url = `${API_URL}/air/sensors/history`;
     
     // Add date range parameters if provided
     if (start && end) {
@@ -35,7 +35,7 @@ export const sensorApi = {
 
   // Get statistics for a specific sensor metric
   async getSensorStats(metricId: string, start?: string, end?: string) {
-    let url = `${API_URL}/api/stats?metric=${metricId}`;
+    let url = `${API_URL}/air/stats?metric=${metricId}`;
     
     // Add date range parameters if provided
     if (start && end) {
