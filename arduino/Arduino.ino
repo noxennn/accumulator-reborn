@@ -43,6 +43,12 @@ unsigned long sonGonderimZamani = 0;
 #define CCS_WARMUP_MS   (20UL * 60UL * 1000UL)  // 20 dakika
 unsigned long ccsStartTime = 0;  // setup() zamanı
 
+// Soft-reset'te SRAM içeriği korunur; güç kesintisinde rastgele olur.
+// warmupMagic beklenen değeri tutuyorsa önceki oturumda ısınma tamamlanmıştı.
+#define WARMUP_MAGIC_VAL 0xCAFEBABEUL
+volatile uint32_t warmupMagic __attribute__((section(".noinit")));
+volatile bool     warmupDone  __attribute__((section(".noinit")));
+
 // ── 2) Baseline kaydet/geri yükle (ESPHome yaklaşımı) ──────────
 #define EEPROM_BASELINE_ADDR   0    // 2 byte baseline + 1 byte magic
 #define EEPROM_MAGIC           0xA5
@@ -112,8 +118,19 @@ bool ccsFilter(int rawCo2, int rawVoc) {
 
   // Warm-up devam ediyorsa hiçbir değer gönderme
   if (millis() - ccsStartTime < CCS_WARMUP_MS) {
-    Serial.println("[CCS] Isinma suresi (20dk), olcum bekleniyor...");
+    unsigned long kalanMs = CCS_WARMUP_MS - (millis() - ccsStartTime);
+    unsigned long kalanDk = kalanMs / 60000;
+    unsigned long kalanSn = (kalanMs % 60000) / 1000;
+    Serial.print("[CCS] Isinma suresi, kalan: ");
+    Serial.print(kalanDk); Serial.print("dk "); Serial.print(kalanSn); Serial.println("sn");
     return false;
+  }
+
+  // Warm-up ilk kez bitti — SRAM flag'ini işaretle
+  if (!warmupDone) {
+    warmupDone = true;
+    warmupMagic = WARMUP_MAGIC_VAL;
+    Serial.println("[CCS] Isinma tamamlandi, olcumler basliyor.");
   }
 
   // Datasheet aralık kontrolü
@@ -373,7 +390,16 @@ void setup() {
       Serial.println("CCS811 baseline bulunamadi, ilk kalibrasyonda kaydedilecek.");
     }
   }
-  ccsStartTime = millis();  // warm-up zamanlayıcısı başlat
+  // Soft-reset tespiti: .noinit SRAM'ı magic + flag tutuyorsa sensör zaten ısınmış
+  if (warmupMagic == WARMUP_MAGIC_VAL && warmupDone) {
+    ccsStartTime = millis() - CCS_WARMUP_MS;  // zaten ısındı gibi davran
+    Serial.println("[CCS] Soft-reset: sensor zaten isinmis, bekleme atlaniyor.");
+  } else {
+    warmupMagic = 0;
+    warmupDone  = false;
+    ccsStartTime = millis();
+    Serial.println("[CCS] Guc verildi, 20dk isinma suresi basliyor.");
+  }
 
   // ESP8266 boot
   Serial.println("ESP8266 baslatiliyor...");
@@ -447,9 +473,12 @@ void loop() {
       return; // Bu turda gönderme yapma, sonraki iterasyonda devam et
     }
 
-    // Sensör hazır değilse gönderme
+    // Sensör hazır değilse gönderme (CCS ısınma süresindeyse mesaj basma, zaten ccsFilter basar)
     if (!ccsOk || !pmsOk) {
-      Serial.println("Sensor hazir degil, gonderim atlandi.");
+      bool ccsIsiniyor = (millis() - ccsStartTime < CCS_WARMUP_MS);
+      if (!ccsIsiniyor) {
+        Serial.println("Sensor hazir degil, gonderim atlandi.");
+      }
       return;
     }
 
