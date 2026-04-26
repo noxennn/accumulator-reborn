@@ -6,6 +6,7 @@ import ThemeToggle from './components/ThemeToggle';
 import Dashboard from './pages/Dashboard';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
+import Watch from './pages/Watch';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import { useAuth } from './hooks/useAuth';
@@ -126,6 +127,13 @@ function App() {
           </MainLayout>
         } />
         
+        {/* Watch — public, real-time live feed */}
+        <Route path="/watch" element={
+          <MainLayout>
+            <Watch />
+          </MainLayout>
+        } />
+
         {/* Settings hala korumalı */}
         <Route path="/settings" element={
           <ProtectedRoute>

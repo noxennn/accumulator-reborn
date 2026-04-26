@@ -10,8 +10,10 @@ PMS pms(Serial1); // PMS5003 -> Serial1 (pin 18/19)
 PMS::DATA data;
 
 // Wi-Fi Ayarları
-char ssid[] = "ERDEMLER ERKEK YURDU";
-char pass[] = "Yurt--2017";
+char ssid[]         = "ERDEMLER ERKEK YURDU";
+char pass[]         = "Yurt--2017";
+char ssidFallback[] = "ABP";
+char passFallback[] = "deneme123";
 
 // Pin Tanımlamaları
 #define CCS_WAK_PIN 8
@@ -113,6 +115,13 @@ int lastValidVoc = -1;
 #define MAX_CONSECUTIVE_REJECTS  5
 uint8_t consecutiveRejects = 0;
 
+// ── 7) Bozuk baseline tespiti ────────────────────────────────────
+//  30 ardışık "aralik disi" → EEPROM baseline bozuk, sil ve yeniden başlat
+#define MAX_ARALIK_DISI_RESETS  30
+uint8_t  aralikDisiSayaci           = 0;
+bool     baselineOtomatikSifirlandi = false;
+uint16_t gecerliOkumaSayaci         = 0;
+
 // ── Ana filtre fonksiyonu ───────────────────────────────────────
 bool ccsFilter(int rawCo2, int rawVoc) {
 
@@ -137,8 +146,19 @@ bool ccsFilter(int rawCo2, int rawVoc) {
   if (!ccsRangeValid(rawCo2, rawVoc)) {
     Serial.print("[CCS] Aralik disi: CO2=");
     Serial.print(rawCo2); Serial.print(" VOC="); Serial.println(rawVoc);
+    aralikDisiSayaci++;
+    if (!baselineOtomatikSifirlandi && aralikDisiSayaci >= MAX_ARALIK_DISI_RESETS) {
+      Serial.println("[CCS] UYARI: Surekli aralik disi okuma — EEPROM baseline bozuk olabilir.");
+      Serial.println("[CCS] EEPROM baseline silindi. Arduino'yu yeniden baslatiniz (tam isinma yapilacak).");
+      EEPROM.update(EEPROM_BASELINE_ADDR + 2, 0x00);  // magic byte'ı geçersiz kıl
+      warmupMagic = 0;
+      warmupDone  = false;
+      baselineOtomatikSifirlandi = true;
+    }
     return false;
   }
+  aralikDisiSayaci = 0;
+  gecerliOkumaSayaci++;
 
   // Reset değeri tespiti (400 ± 15 ppm ve VOC==0)
   if (rawCo2 <= 415 && rawVoc == 0) {
@@ -256,6 +276,33 @@ bool wsConnect() {
   return true;
 }
 
+// Önce ana ağa, başarısız olursa yedek ağa bağlanmayı dener
+bool wifiBaglan() {
+  Serial.print("WiFi baglaniliyor (ana ag): ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, pass);
+  unsigned long t = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  if (WiFi.status() == WL_CONNECTED) return true;
+
+  Serial.print("Ana ag basarisiz. Yedek ag deneniyor: ");
+  Serial.println(ssidFallback);
+  WiFi.disconnect();
+  delay(500);
+  WiFi.begin(ssidFallback, passFallback);
+  t = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  return (WiFi.status() == WL_CONNECTED);
+}
+
 // WiFi + WebSocket tam yeniden bağlanma (ESP reset dahil)
 void tamYenidenBaglan() {
   static uint8_t basarisizSayaci = 0;
@@ -285,17 +332,10 @@ void tamYenidenBaglan() {
 
   // WiFi bağlantısı kontrol et
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.print("WiFi yeniden baglaniliyor...");
+    Serial.println("WiFi yeniden baglaniliyor...");
     WiFi.disconnect();
     delay(500);
-    WiFi.begin(ssid, pass);
-    unsigned long t = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) {
-      delay(500);
-      Serial.print(".");
-    }
-    Serial.println();
-    if (WiFi.status() != WL_CONNECTED) {
+    if (!wifiBaglan()) {
       Serial.println("WiFi baglantisi kurulamadi, tekrar denenecek.");
       basarisizSayaci++;
       return;
@@ -422,14 +462,10 @@ void setup() {
     while (true);
   }
 
-  Serial.print("WiFi baglaniliyor: ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, pass);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+  while (!wifiBaglan()) {
+    Serial.println("Her iki WiFi de basarisiz, yeniden deneniyor...");
+    delay(3000);
   }
-  Serial.println();
   Serial.print("WiFi baglandi! IP: ");
   Serial.println(WiFi.localIP());
 
@@ -498,7 +534,8 @@ void loop() {
 
   // ── Periyodik baseline kaydetme (her 1 saatte) ──
   if (millis() - ccsStartTime >= CCS_WARMUP_MS &&
-      millis() - lastBaselineSave >= BASELINE_SAVE_INTERVAL) {
+      millis() - lastBaselineSave >= BASELINE_SAVE_INTERVAL &&
+      gecerliOkumaSayaci >= 100) {
     lastBaselineSave = millis();
     saveBaseline();
   }

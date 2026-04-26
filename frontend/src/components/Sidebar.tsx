@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, LineChart, Settings, Wind } from 'lucide-react';
+import { LayoutDashboard, LineChart, Settings, Wind, Activity } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
 
@@ -41,7 +41,19 @@ const Sidebar = () => {
           <LineChart className="w-5 h-5" />
           <span>{t('analytics')}</span>
         </NavLink>
-        
+
+        <NavLink
+          to="/watch"
+          className={({ isActive }) =>
+            `flex items-center gap-2 p-3 rounded-lg transition-colors ${
+              isActive ? 'bg-primary text-primary-content' : 'hover:bg-base-300'
+            }`
+          }
+        >
+          <Activity className="w-5 h-5" />
+          <span>{t('watch.title')}</span>
+        </NavLink>
+
         {/* Ayarlar menüsünü sadece giriş yapmış kullanıcılara göster */}
         {isAuthenticated && (
           <NavLink

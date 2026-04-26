@@ -155,5 +155,15 @@
   },
   "actions": {
     "refresh": "Refresh"
+  },
+  "watch": {
+    "title": "Live Watch",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "liveData": "Live Data",
+    "time": "Time",
+    "waiting": "Waiting for data...",
+    "window": "Window",
+    "points": "points"
   }
 }

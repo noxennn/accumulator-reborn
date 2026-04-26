@@ -44,6 +44,33 @@ def get_db():
 api_prefix = "/air"
 
 
+class ConnectionManager:
+    """Manages active frontend WebSocket connections for live data feed."""
+
+    def __init__(self):
+        self.active_connections: set[WebSocket] = set()
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.add(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.discard(websocket)
+
+    async def broadcast(self, data: dict):
+        dead: set[WebSocket] = set()
+        for ws in self.active_connections:
+            try:
+                await ws.send_json(data)
+            except Exception:
+                dead.add(ws)
+        for ws in dead:
+            self.active_connections.discard(ws)
+
+
+manager = ConnectionManager()
+
+
 async def check_and_alert(co2: float, voc: float, pm25: float, pm10: float, now_utc: datetime):
     db = SessionLocal()
     try:
@@ -149,6 +176,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.info(f"CO2:{co2} ppm | VOC:{voc} ppb | PM2.5:{pm25} ug/m3 | PM10:{pm10} ug/m3")
 
                 asyncio.create_task(check_and_alert(co2, voc, pm25, pm10, now_utc))
+                asyncio.create_task(manager.broadcast({
+                    "timestamp": now_utc.isoformat(),
+                    "co2": co2,
+                    "voc": voc,
+                    "pm25": pm25,
+                    "pm10": pm10,
+                }))
 
             except json.JSONDecodeError:
                 logger.warning(f"Raw (non-JSON) data: {message}")
@@ -160,6 +194,22 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket unexpected error: {e}")
     finally:
         db.close()
+
+
+@app.websocket("/ws/live")
+async def live_feed_endpoint(websocket: WebSocket):
+    """Frontend connects here to receive live sensor data broadcasts."""
+    await manager.connect(websocket)
+    logger.info(f"Live feed WebSocket connected: {websocket.client}")
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        logger.info(f"Live feed WebSocket disconnected: {websocket.client}")
+    except Exception as e:
+        manager.disconnect(websocket)
+        logger.warning(f"Live feed WebSocket error: {e}")
 
 
 @app.get(f"{api_prefix}/sensors/history", response_model=List[schemas.SensorData])

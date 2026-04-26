@@ -155,5 +155,15 @@
   },
   "actions": {
     "refresh": "Yenile"
+  },
+  "watch": {
+    "title": "Canlı İzleme",
+    "connected": "Bağlı",
+    "disconnected": "Bağlı Değil",
+    "liveData": "Canlı Veri",
+    "time": "Saat",
+    "waiting": "Veri bekleniyor...",
+    "window": "Pencere",
+    "points": "nokta"
   }
 }
