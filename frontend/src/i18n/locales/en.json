@@ -161,9 +161,15 @@
     "connected": "Connected",
     "disconnected": "Disconnected",
     "liveData": "Live Data",
+    "latestTen": "Latest 10 rows",
+    "lastUpdate": "Last update",
     "time": "Time",
     "waiting": "Waiting for data...",
     "window": "Window",
-    "points": "points"
+    "chartWindow": "Chart window",
+    "samplingRate": "Sampling interval",
+    "points": "points",
+    "noDataInWindow": "No samples in the last {{period}} seconds.",
+    "samplingHint": "Your sensor sends data about every {{interval}} seconds. Try a wider window."
   }
 }

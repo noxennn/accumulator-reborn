@@ -8,8 +8,6 @@ export interface LiveDataPoint {
   pm10: number;
 }
 
-const MAX_BUFFER_SECONDS = 60;
-
 export function useWebSocketData() {
   const [dataBuffer, setDataBuffer] = useState<LiveDataPoint[]>([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -40,12 +38,12 @@ export function useWebSocketData() {
       if (!isMounted.current) return;
       try {
         const point: LiveDataPoint = JSON.parse(event.data as string);
-        const cutoff = Date.now() - MAX_BUFFER_SECONDS * 1000;
         setDataBuffer(prev => {
-          const updated = [...prev, point].filter(
-            p => new Date(p.timestamp).getTime() >= cutoff
-          );
-          return updated;
+          // Keep all session data and deduplicate replayed points on reconnect.
+          if (prev.some(p => p.timestamp === point.timestamp)) {
+            return prev;
+          }
+          return [...prev, point];
         });
       } catch {
         // ignore malformed messages

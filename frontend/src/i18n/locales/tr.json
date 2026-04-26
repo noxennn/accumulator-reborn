@@ -161,9 +161,15 @@
     "connected": "Bağlı",
     "disconnected": "Bağlı Değil",
     "liveData": "Canlı Veri",
+    "latestTen": "Son 10 kayıt",
+    "lastUpdate": "Son güncelleme",
     "time": "Saat",
     "waiting": "Veri bekleniyor...",
     "window": "Pencere",
-    "points": "nokta"
+    "chartWindow": "Grafik penceresi",
+    "samplingRate": "Örnekleme aralığı",
+    "points": "nokta",
+    "noDataInWindow": "Son {{period}} saniyede veri yok.",
+    "samplingHint": "Sensör yaklaşık her {{interval}} saniyede veri gönderiyor. Daha geniş pencere seçebilirsiniz."
   }
 }

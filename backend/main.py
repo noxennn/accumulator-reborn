@@ -1,5 +1,6 @@
 import asyncio
 import json
+from collections import deque
 import uvicorn
 from fastapi import FastAPI, HTTPException, Depends, Query, WebSocket, WebSocketDisconnect
 from fastapi.security import OAuth2PasswordRequestForm
@@ -49,13 +50,23 @@ class ConnectionManager:
 
     def __init__(self):
         self.active_connections: set[WebSocket] = set()
+        self.recent_data: deque[dict] = deque(maxlen=20)
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.add(websocket)
+        # Replay the latest 20 measurements to newly connected clients.
+        try:
+            for point in self.recent_data:
+                await websocket.send_json(point)
+        except Exception:
+            self.disconnect(websocket)
 
     def disconnect(self, websocket: WebSocket):
         self.active_connections.discard(websocket)
+
+    def push_recent(self, data: dict):
+        self.recent_data.append(data)
 
     async def broadcast(self, data: dict):
         dead: set[WebSocket] = set()
@@ -175,14 +186,17 @@ async def websocket_endpoint(websocket: WebSocket):
                 db.commit()
                 logger.info(f"CO2:{co2} ppm | VOC:{voc} ppb | PM2.5:{pm25} ug/m3 | PM10:{pm10} ug/m3")
 
-                asyncio.create_task(check_and_alert(co2, voc, pm25, pm10, now_utc))
-                asyncio.create_task(manager.broadcast({
+                payload = {
                     "timestamp": now_utc.isoformat(),
                     "co2": co2,
                     "voc": voc,
                     "pm25": pm25,
                     "pm10": pm10,
-                }))
+                }
+                manager.push_recent(payload)
+
+                asyncio.create_task(check_and_alert(co2, voc, pm25, pm10, now_utc))
+                asyncio.create_task(manager.broadcast(payload))
 
             except json.JSONDecodeError:
                 logger.warning(f"Raw (non-JSON) data: {message}")
