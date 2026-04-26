@@ -8,6 +8,8 @@ export interface LiveDataPoint {
   pm10: number;
 }
 
+const MAX_RENDER_POINTS = 3000;
+
 export function useWebSocketData() {
   const [dataBuffer, setDataBuffer] = useState<LiveDataPoint[]>([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -16,6 +18,7 @@ export function useWebSocketData() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMounted = useRef(true);
+  const seenTimestampsRef = useRef<Set<string>>(new Set());
 
   const connect = useCallback(() => {
     if (!isMounted.current) return;
@@ -38,12 +41,18 @@ export function useWebSocketData() {
       if (!isMounted.current) return;
       try {
         const point: LiveDataPoint = JSON.parse(event.data as string);
+
+        if (seenTimestampsRef.current.has(point.timestamp)) {
+          return;
+        }
+        seenTimestampsRef.current.add(point.timestamp);
+
         setDataBuffer(prev => {
-          // Keep all session data and deduplicate replayed points on reconnect.
-          if (prev.some(p => p.timestamp === point.timestamp)) {
-            return prev;
-          }
-          return [...prev, point];
+          const updated = [...prev, point];
+          if (updated.length <= MAX_RENDER_POINTS) return updated;
+          const trimmed = updated.slice(-MAX_RENDER_POINTS);
+          seenTimestampsRef.current = new Set(trimmed.map(p => p.timestamp));
+          return trimmed;
         });
       } catch {
         // ignore malformed messages

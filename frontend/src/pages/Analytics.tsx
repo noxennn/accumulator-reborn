@@ -4,8 +4,8 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, AreaChart, Area, ComposedChart, Scatter
 } from 'recharts';
-import { format, subDays, parseISO } from 'date-fns';
-import { tr, enUS } from 'date-fns/locale';
+import { format, subDays } from 'date-fns';
+import { tr, enUS, type Locale } from 'date-fns/locale';
 import { FileText, FileDown, RefreshCw } from 'lucide-react';
 import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
@@ -260,9 +260,12 @@ const Analytics = () => {
   );
 
   if (error && !data.length) return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] p-6">
+    <div className="flex flex-col items-center justify-center min-h-[80vh] p-4 sm:p-6">
       <div className="card bg-base-100 shadow-xl w-full max-w-2xl">
         <div className="card-body text-center">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 mx-auto text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
           <h2 className="text-2xl font-bold mt-4">{t('errors.dataLoadFailed')}</h2>
           <p className="text-lg opacity-80 mt-2">{error}</p>
           <div className="card-actions justify-center mt-6">
@@ -275,10 +278,15 @@ const Analytics = () => {
 
   // ── Ana render ───────────────────────────────────────────────────
   return (
-    <div className="p-6 space-y-6">
+    <div className="px-0 py-2 md:py-4 space-y-4 md:space-y-6">
       {error && (
         <div className="alert alert-warning shadow-lg">
-          <span>{error}</span>
+          <div>
+            <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current flex-shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>{error}</span>
+          </div>
         </div>
       )}
 

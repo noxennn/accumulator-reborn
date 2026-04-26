@@ -202,7 +202,7 @@ const Dashboard = () => {
 
   if (error && !currentData && !historicalData.length) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[80vh] p-6">
+      <div className="flex flex-col items-center justify-center min-h-[80vh] p-4 sm:p-6">
         <div className="card bg-base-100 shadow-xl w-full max-w-2xl">
           <div className="card-body text-center">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 mx-auto text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -223,7 +223,7 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="px-0 py-2 md:py-4 space-y-4 md:space-y-6">
       {error && (
         <div className="alert alert-warning shadow-lg mb-4">
           <div>

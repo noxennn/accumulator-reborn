@@ -14,13 +14,6 @@ export const useAlerts = (
   useEffect(() => {
     if (value > threshold) {
       play();
-      // Görsel bildirim göster
-      new Notification(`${type.toUpperCase()} Alert`, {
-        body: `${type.toUpperCase()} level has exceeded the threshold: ${value}`,
-        icon: '/warning.png'
-      });
-      
-      // Uyarı mesajını ekle
       setAlerts(prev => [...prev, `${type.toUpperCase()} seviyesi eşik değerini aştı: ${value}`]);
     } else {
       // Eşik değeri altındaysa, bu tür uyarıyı kaldır

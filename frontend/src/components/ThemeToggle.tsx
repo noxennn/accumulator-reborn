@@ -16,22 +16,22 @@ const ThemeToggle = () => {
   };
 
   return (
-    <div className="flex gap-2">
+    <div className="flex items-center gap-0.5 sm:gap-1">
       <button
-        className="btn btn-ghost btn-circle"
+        className="btn btn-ghost btn-circle btn-sm sm:btn-md"
         onClick={toggleLanguage}
         title={i18n.language === 'en' ? 'Türkçe' : 'English'}
       >
-        <Globe className="w-5 h-5" />
+        <Globe className="w-4 h-4 sm:w-5 sm:h-5" />
       </button>
       <button
-        className="btn btn-ghost btn-circle"
+        className="btn btn-ghost btn-circle btn-sm sm:btn-md"
         onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
       >
         {theme === 'light' ? (
-          <Moon className="w-5 h-5" />
+          <Moon className="w-4 h-4 sm:w-5 sm:h-5" />
         ) : (
-          <Sun className="w-5 h-5" />
+          <Sun className="w-4 h-4 sm:w-5 sm:h-5" />
         )}
       </button>
     </div>

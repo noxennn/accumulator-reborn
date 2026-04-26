@@ -49,11 +49,13 @@ export default function Watch() {
     };
   }, [latestPoint?.timestamp]);
 
-  const cutoff = Date.now() - period * 1000;
+  const cutoff = useMemo(() => Date.now() - period * 1000, [period]);
   const windowedData = useMemo(
     () => dataBuffer.filter(p => new Date(p.timestamp).getTime() >= cutoff),
     [dataBuffer, cutoff]
   );
+
+  const chartAnimationEnabled = windowedData.length <= 180;
 
   const estimatedIntervalSeconds = useMemo(() => {
     if (dataBuffer.length < 3) return null;
@@ -83,10 +85,10 @@ export default function Watch() {
     [windowedData]
   );
 
-  const last10 = useMemo(() => [...dataBuffer].reverse().slice(0, 10), [dataBuffer]);
+  const last10 = useMemo(() => dataBuffer.slice(-10).reverse(), [dataBuffer]);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="px-0 py-2 md:py-4 space-y-4 md:space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight">{t('watch.title')}</h1>
@@ -257,8 +259,8 @@ export default function Watch() {
                     stroke={color}
                     dot={false}
                     strokeWidth={2}
-                    isAnimationActive
-                    animationDuration={550}
+                    isAnimationActive={chartAnimationEnabled}
+                    animationDuration={chartAnimationEnabled ? 550 : 0}
                     animationEasing="ease-out"
                   />
                 </LineChart>
