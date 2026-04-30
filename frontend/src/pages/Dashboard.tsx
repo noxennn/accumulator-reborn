@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceArea } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import { RefreshCw } from 'lucide-react';
 
@@ -17,6 +17,20 @@ import { settingsApi } from '../lib/settingsApi';
 import { analyticsApi } from '../lib/analyticsApi';
 import { SensorData, UserSettings } from '../types';
 import { useAuth } from '../hooks/useAuth';
+
+interface ExceededInterval {
+  metric: string;
+  start: string;
+  end: string;
+  threshold: number;
+  max_value: number;
+  avg_value: number;
+  duration_minutes: number;
+}
+
+const METRIC_LABELS: Record<string, string> = { co2: 'CO₂', pm25: 'PM2.5', pm10: 'PM10', voc: 'VOC' };
+const fmtTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 const TREND_PERIODS = ['5m', '15m', '30m', '1h', '2h'];
 
@@ -49,6 +63,9 @@ const Dashboard = () => {
     startTime !== applied.startTime ||
     endTime   !== applied.endTime   ||
     trendPeriod !== applied.trendPeriod;
+
+  const [exceededIntervals, setExceededIntervals] = useState<ExceededInterval[]>([]);
+  const [hoveredInterval, setHoveredInterval] = useState<ExceededInterval | null>(null);
 
   const [visibleMetrics, setVisibleMetrics] = useState<Record<string, boolean>>({
     co2: true,
@@ -150,8 +167,34 @@ const Dashboard = () => {
       .catch(err => console.error('Error fetching user settings:', err));
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const [sh, sm] = applied.startTime.split(':').map(Number);
+    const [eh, em] = applied.endTime.split(':').map(Number);
+    const today = new Date();
+    const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), sh, sm, 0);
+    const endDate   = new Date(today.getFullYear(), today.getMonth(), today.getDate(), eh, em, 59);
+    const clampedEnd = endDate > today ? today : endDate;
+    sensorApi.getExceededIntervals(startDate.toISOString(), clampedEnd.toISOString())
+      .then(setExceededIntervals)
+      .catch(() => setExceededIntervals([]));
+  }, [isAuthenticated, applied]);
+
   const toggleMetricVisibility = (metric: string) => {
     setVisibleMetrics(prev => ({ ...prev, [metric]: !prev[metric] }));
+  };
+
+  // Find the closest `time` label in historicalData to an ISO timestamp (for ReferenceArea bounds).
+  const findClosestTime = (isoTs: string): string | null => {
+    if (!historicalData.length) return null;
+    const target = new Date(isoTs).getTime();
+    let best = historicalData[0] as any;
+    let bestDiff = Math.abs(new Date(best.timestamp).getTime() - target);
+    for (const p of historicalData as any[]) {
+      const diff = Math.abs(new Date(p.timestamp).getTime() - target);
+      if (diff < bestDiff) { bestDiff = diff; best = p; }
+    }
+    return best.time ?? null;
   };
 
   const calculateAQI = (pm25: number, pm10: number) => {
@@ -360,12 +403,65 @@ const Dashboard = () => {
                       hide={!visibleMetrics[metric.id]}
                     />
                   ))}
+                  {hoveredInterval && (() => {
+                    const x1 = findClosestTime(hoveredInterval.start);
+                    const x2 = findClosestTime(hoveredInterval.end);
+                    if (!x1 || !x2) return null;
+                    return (
+                      <ReferenceArea
+                        x1={x1}
+                        x2={x2}
+                        fill="rgba(239,68,68,0.15)"
+                        stroke="rgba(239,68,68,0.4)"
+                        strokeOpacity={0.8}
+                      />
+                    );
+                  })()}
                 </LineChart>
               </ResponsiveContainer>
             </div>
             <div className="mt-2 text-sm text-center text-gray-500">
               {t('trend.legendHelp')}
             </div>
+
+            {isAuthenticated && (
+              <div className="mt-3 border-t border-base-300 pt-3">
+                <p className="text-xs font-semibold uppercase tracking-wide opacity-60 mb-2">
+                  {t('threshold.exceededIntervals')}
+                </p>
+                {exceededIntervals.length === 0 ? (
+                  <p className="text-xs opacity-40">{t('threshold.noExceededIntervals')}</p>
+                ) : (
+                  <ul className="space-y-1 max-h-44 overflow-y-auto pr-1">
+                    {exceededIntervals.map((iv, i) => (
+                      <li
+                        key={i}
+                        onMouseEnter={() => setHoveredInterval(iv)}
+                        onMouseLeave={() => setHoveredInterval(null)}
+                        className={`flex items-center gap-3 text-xs px-2 py-1.5 rounded cursor-pointer select-none transition-colors ${
+                          hoveredInterval === iv
+                            ? 'bg-error/20 ring-1 ring-error/30'
+                            : 'hover:bg-base-300'
+                        }`}
+                      >
+                        <span className="font-bold uppercase w-10 shrink-0 text-error">
+                          {METRIC_LABELS[iv.metric] ?? iv.metric}
+                        </span>
+                        <span className="opacity-70 shrink-0">
+                          {fmtTime(iv.start)} – {fmtTime(iv.end)}
+                        </span>
+                        <span className="ml-auto font-mono text-error shrink-0">
+                          ↑{iv.max_value}
+                        </span>
+                        <span className="opacity-50 shrink-0">
+                          {iv.duration_minutes}{t('threshold.minSuffix')}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

@@ -49,34 +49,66 @@ class ConnectionManager:
     """Manages active frontend WebSocket connections for live data feed."""
 
     def __init__(self):
-        self.active_connections: set[WebSocket] = set()
-        self.recent_data: deque[dict] = deque(maxlen=20)
+        # Maps websocket → user thresholds dict (or None for unauthenticated)
+        self.active_connections: dict[WebSocket, Optional[dict]] = {}
+        self.recent_data:    deque[dict] = deque(maxlen=50)
+        self.recent_logs:    deque[dict] = deque(maxlen=50)
+        self.recent_invalid: deque[dict] = deque(maxlen=50)
 
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, websocket: WebSocket, thresholds: Optional[dict] = None):
         await websocket.accept()
-        self.active_connections.add(websocket)
-        # Replay the latest 20 measurements to newly connected clients.
+        self.active_connections[websocket] = thresholds
+        # Replay buffered data, logs and invalid entries to newly connected clients.
         try:
             for point in self.recent_data:
-                await websocket.send_json(point)
+                await websocket.send_json(self._enrich(point, thresholds))
+            for entry in self.recent_logs:
+                await websocket.send_json(entry)
+            for entry in self.recent_invalid:
+                await websocket.send_json(entry)
         except Exception:
             self.disconnect(websocket)
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.discard(websocket)
+        self.active_connections.pop(websocket, None)
 
     def push_recent(self, data: dict):
         self.recent_data.append(data)
 
+    def push_log(self, entry: dict):
+        self.recent_logs.append(entry)
+
+    def push_invalid(self, entry: dict):
+        self.recent_invalid.append(entry)
+
+    @staticmethod
+    def _enrich(payload: dict, thresholds: Optional[dict]) -> dict:
+        """Attach per-metric threshold status to data payloads for authenticated clients."""
+        if not thresholds or payload.get("type") != "data":
+            return payload
+        status: dict[str, str] = {}
+        for metric in ["co2", "pm25", "pm10", "voc"]:
+            val = payload.get(metric)
+            thr = thresholds.get(metric)
+            if val is None or not thr:
+                status[metric] = "green"
+            elif val > thr:
+                status[metric] = "red"
+            elif val >= thr * 0.8:
+                status[metric] = "yellow"
+            else:
+                status[metric] = "green"
+        return {**payload, "threshold_status": status}
+
     async def broadcast(self, data: dict):
         dead: set[WebSocket] = set()
-        for ws in self.active_connections:
+        for ws, thresholds in self.active_connections.items():
             try:
-                await ws.send_json(data)
+                await ws.send_json(self._enrich(data, thresholds))
             except Exception:
                 dead.add(ws)
         for ws in dead:
-            self.active_connections.discard(ws)
+            self.active_connections.pop(ws, None)
 
 
 manager = ConnectionManager()
@@ -161,22 +193,82 @@ async def websocket_endpoint(websocket: WebSocket):
                 pm10 = data.get("pm10")
 
                 if any(v is None for v in [co2, voc, pm25, pm10]):
-                    logger.warning(f"Incomplete sensor data: {data}")
+                    now_utc = datetime.now(timezone.utc)
+                    reason = f"Incomplete sensor data: {data}"
+                    logger.warning(reason)
+                    inv = {
+                        "type": "invalid",
+                        "timestamp": now_utc.isoformat(),
+                        "field": "missing",
+                        "value": 0,
+                        "reason": reason,
+                        "co2": co2 or 0, "voc": voc or 0, "pm25": pm25 or 0, "pm10": pm10 or 0,
+                    }
+                    manager.push_invalid(inv)
+                    asyncio.create_task(manager.broadcast(inv))
                     continue
 
                 # ── Server-side doğrulama (CCS811/PMS5003 datasheet aralıkları) ──
                 # CO2: 400-8192 ppm, VOC: 0-1187 ppb, PM2.5: 0-1000, PM10: 0-1000
                 if not (400 <= co2 <= 8192):
-                    logger.warning(f"CO2 out of range ({co2}), discarded")
+                    now_utc = datetime.now(timezone.utc)
+                    reason = f"CO2 out of range ({co2}), expected 400-8192"
+                    logger.warning(reason)
+                    inv = {
+                        "type": "invalid",
+                        "timestamp": now_utc.isoformat(),
+                        "field": "co2",
+                        "value": co2,
+                        "reason": reason,
+                        "co2": co2, "voc": voc, "pm25": pm25, "pm10": pm10,
+                    }
+                    manager.push_invalid(inv)
+                    asyncio.create_task(manager.broadcast(inv))
                     continue
                 if not (0 <= voc <= 1187):
-                    logger.warning(f"VOC out of range ({voc}), discarded")
+                    now_utc = datetime.now(timezone.utc)
+                    reason = f"VOC out of range ({voc}), expected 0-1187"
+                    logger.warning(reason)
+                    inv = {
+                        "type": "invalid",
+                        "timestamp": now_utc.isoformat(),
+                        "field": "voc",
+                        "value": voc,
+                        "reason": reason,
+                        "co2": co2, "voc": voc, "pm25": pm25, "pm10": pm10,
+                    }
+                    manager.push_invalid(inv)
+                    asyncio.create_task(manager.broadcast(inv))
                     continue
                 if not (0 <= pm25 <= 1000):
-                    logger.warning(f"PM2.5 out of range ({pm25}), discarded")
+                    now_utc = datetime.now(timezone.utc)
+                    reason = f"PM2.5 out of range ({pm25}), expected 0-1000"
+                    logger.warning(reason)
+                    inv = {
+                        "type": "invalid",
+                        "timestamp": now_utc.isoformat(),
+                        "field": "pm25",
+                        "value": pm25,
+                        "reason": reason,
+                        "co2": co2, "voc": voc, "pm25": pm25, "pm10": pm10,
+                    }
+                    manager.push_invalid(inv)
+                    asyncio.create_task(manager.broadcast(inv))
                     continue
                 if not (0 <= pm10 <= 1000):
-                    logger.warning(f"PM10 out of range ({pm10}), discarded")
+                    now_utc = datetime.now(timezone.utc)
+                    reason = f"PM10 out of range ({pm10}), expected 0-1000"
+                    logger.warning(reason)
+                    inv = {
+                        "type": "invalid",
+                        "timestamp": now_utc.isoformat(),
+                        "field": "pm10",
+                        "value": pm10,
+                        "reason": reason,
+                        "co2": co2, "voc": voc, "pm25": pm25, "pm10": pm10,
+                    }
+                    manager.push_invalid(inv)
+                    asyncio.create_task(manager.broadcast(inv))
                     continue
 
                 now_utc = datetime.now(timezone.utc)
@@ -187,6 +279,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.info(f"CO2:{co2} ppm | VOC:{voc} ppb | PM2.5:{pm25} ug/m3 | PM10:{pm10} ug/m3")
 
                 payload = {
+                    "type": "data",
                     "timestamp": now_utc.isoformat(),
                     "co2": co2,
                     "voc": voc,
@@ -199,7 +292,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 asyncio.create_task(manager.broadcast(payload))
 
             except json.JSONDecodeError:
+                now_utc = datetime.now(timezone.utc)
+                log_entry = {
+                    "type": "log",
+                    "timestamp": now_utc.isoformat(),
+                    "message": message,
+                }
                 logger.warning(f"Raw (non-JSON) data: {message}")
+                manager.push_log(log_entry)
+                asyncio.create_task(manager.broadcast(log_entry))
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: {websocket.client}")
     except (OSError, ConnectionResetError, ConnectionAbortedError) as e:
@@ -211,10 +312,24 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 @app.websocket("/ws/live")
-async def live_feed_endpoint(websocket: WebSocket):
+async def live_feed_endpoint(websocket: WebSocket, token: Optional[str] = Query(None)):
     """Frontend connects here to receive live sensor data broadcasts."""
-    await manager.connect(websocket)
-    logger.info(f"Live feed WebSocket connected: {websocket.client}")
+    thresholds: Optional[dict] = None
+    if token:
+        db = SessionLocal()
+        try:
+            user = auth.get_user_from_token(token, db)
+            if user:
+                settings = db.query(models.UserSettings).filter_by(user_id=user.id).first()
+                if settings and settings.thresholds:
+                    thresholds = settings.thresholds
+        except Exception:
+            pass
+        finally:
+            db.close()
+
+    await manager.connect(websocket, thresholds)
+    logger.info(f"Live feed WebSocket connected: {websocket.client} (authenticated={thresholds is not None})")
     try:
         while True:
             await websocket.receive_text()
@@ -284,6 +399,93 @@ async def get_aggregated_data(
         }
         for row in rows
     ]
+
+
+@app.get(f"{api_prefix}/sensors/exceeded-intervals")
+async def get_exceeded_intervals(
+    start: datetime,
+    end: datetime,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Return merged intervals where any metric exceeded the user's alert thresholds."""
+    settings = db.query(models.UserSettings).filter_by(user_id=current_user.id).first()
+    thresholds = (settings.thresholds if settings else None) or {
+        "co2": 1000, "pm25": 35, "pm10": 50, "voc": 500
+    }
+
+    rows = (
+        db.query(models.ArduinoData)
+        .filter(models.ArduinoData.timestamp.between(start, end))
+        .order_by(models.ArduinoData.timestamp)
+        .all()
+    )
+
+    # Gaps shorter than GAP_SECONDS within an exceedance window are merged into the interval.
+    GAP_SECONDS = 300
+
+    def _iso(ts: datetime) -> str:
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return ts.isoformat()
+
+    result = []
+    for metric in ["co2", "pm25", "pm10", "voc"]:
+        threshold = float(thresholds.get(metric) or 0)
+        if threshold <= 0:
+            continue
+
+        exceeded = [
+            (r.timestamp, float(getattr(r, metric)))
+            for r in rows
+            if getattr(r, metric) is not None and float(getattr(r, metric)) > threshold
+        ]
+        if not exceeded:
+            continue
+
+        # Build merged intervals
+        seg_start, seg_end = exceeded[0][0], exceeded[0][0]
+        for ts, _ in exceeded[1:]:
+            if (ts - seg_end).total_seconds() <= GAP_SECONDS:
+                seg_end = ts
+            else:
+                # collect all raw values in this merged window (including non-exceeded ones)
+                vals = [
+                    float(getattr(r, metric))
+                    for r in rows
+                    if seg_start <= r.timestamp <= seg_end and getattr(r, metric) is not None
+                ]
+                if vals:
+                    result.append({
+                        "metric": metric,
+                        "start": _iso(seg_start),
+                        "end": _iso(seg_end),
+                        "threshold": threshold,
+                        "max_value": round(max(vals), 1),
+                        "avg_value": round(sum(vals) / len(vals), 1),
+                        "duration_minutes": round((seg_end - seg_start).total_seconds() / 60, 1),
+                    })
+                seg_start = seg_end = ts
+
+        # Flush final segment
+        vals = [
+            float(getattr(r, metric))
+            for r in rows
+            if seg_start <= r.timestamp <= seg_end and getattr(r, metric) is not None
+        ]
+        if vals:
+            result.append({
+                "metric": metric,
+                "start": _iso(seg_start),
+                "end": _iso(seg_end),
+                "threshold": threshold,
+                "max_value": round(max(vals), 1),
+                "avg_value": round(sum(vals) / len(vals), 1),
+                "duration_minutes": round((seg_end - seg_start).total_seconds() / 60, 1),
+            })
+
+    result.sort(key=lambda x: x["start"])
+    return result
 
 
 @app.get(f"{api_prefix}/sensors/summary", response_model=List[schemas.PartialSensorData])

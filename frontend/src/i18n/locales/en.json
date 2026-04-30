@@ -156,6 +156,12 @@
   "actions": {
     "refresh": "Refresh"
   },
+  "threshold": {
+    "exceededIntervals": "Threshold Exceeded Intervals",
+    "noExceededIntervals": "No threshold exceedances in this period",
+    "minSuffix": " min",
+    "focused": "focused"
+  },
   "watch": {
     "title": "Live Watch",
     "connected": "Connected",
@@ -170,6 +176,16 @@
     "samplingRate": "Sampling interval",
     "points": "points",
     "noDataInWindow": "No samples in the last {{period}} seconds.",
-    "samplingHint": "Your sensor sends data about every {{interval}} seconds. Try a wider window."
+    "samplingHint": "Your sensor sends data about every {{interval}} seconds. Try a wider window.",
+    "allData": "All Data",
+    "records": "records",
+    "logs": "Arduino Logs",
+    "logsEmpty": "Waiting for logs...",
+    "invalidData": "Invalid Data",
+    "invalidEmpty": "No invalid data",
+    "field": "Field",
+    "value": "Value",
+    "reason": "Reason",
+    "message": "Message"
   }
 }

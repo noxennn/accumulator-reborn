@@ -1,8 +1,9 @@
-#include <Wire.h>
+﻿#include <Wire.h>
 #include <Adafruit_CCS811.h>
 #include <PMS.h>
 #include <WiFiEspAT.h>
 #include <EEPROM.h>
+#include <avr/wdt.h>
 
 // Sensör Nesneleri
 Adafruit_CCS811 ccs;
@@ -18,6 +19,7 @@ char passFallback[] = "deneme123";
 // Pin Tanımlamaları
 #define CCS_WAK_PIN 8
 #define PMS_SET_PIN 7
+#define ESP_RST_PIN  4   // Arduino pin 4 -> ESP8266 RST pini
 
 // WebSocket Sunucu Bilgileri
 #define WS_HOST "air.aliburakpekisik.com"
@@ -30,40 +32,50 @@ int   co2  = 0;
 int   voc  = 0;
 int   pm25 = 0;
 int   pm10 = 0;
-bool  ccsOk = false;
-bool  pmsOk = false;
+bool  ccsOk   = false;
+bool  ccsFresh = false;
+bool  pmsOk   = false;
+
+// Backend tarafindaki invalid/log akisini beslemek icin son gecersiz ornek.
+bool invalidSamplePending = false;
+int  invalidCo2 = 0;
+int  invalidVoc = 0;
+int  invalidPm25 = 0;
+int  invalidPm10 = 0;
 
 unsigned long sonGonderimZamani = 0;
+unsigned long lastDataSent      = 0;
 #define GONDERIM_ARALIGI 2000  // ms
+#define MAX_SILENT_MS (5UL * 60UL * 1000UL)
+
+// PMS sensör ölü-mu tespiti: ısınma bittikten 3 dk sonra hâlâ veri yoksa ölü kabul et
+#define PMS_FAIL_TIMEOUT_MS (3UL * 60UL * 1000UL)
+unsigned long pmsWarmupEndTime = 0;
 
 // ══════════════════════════════════════════════════════════════════
 //  CCS811 Enterprise-Grade Filtreleme Sistemi
-//  Kaynak: Adafruit, ESPHome, ScioSense Application Note, maarten-pennings/CCS811
 // ══════════════════════════════════════════════════════════════════
 
-// ── 1) Warm-up süresi (Adafruit: her açılışta 20 dk ısınma gerekli) ──
 #define CCS_WARMUP_MS   (20UL * 60UL * 1000UL)  // 20 dakika
-unsigned long ccsStartTime = 0;  // setup() zamanı
+unsigned long ccsStartTime = 0;
 
 // Soft-reset'te SRAM içeriği korunur; güç kesintisinde rastgele olur.
-// warmupMagic beklenen değeri tutuyorsa önceki oturumda ısınma tamamlanmıştı.
 #define WARMUP_MAGIC_VAL 0xCAFEBABEUL
 volatile uint32_t warmupMagic __attribute__((section(".noinit")));
 volatile bool     warmupDone  __attribute__((section(".noinit")));
 
-// ── 2) Baseline kaydet/geri yükle (ESPHome yaklaşımı) ──────────
-#define EEPROM_BASELINE_ADDR   0    // 2 byte baseline + 1 byte magic
+// ── Baseline kaydet/geri yükle ──────────────────────────────────
+#define EEPROM_BASELINE_ADDR   0
 #define EEPROM_MAGIC           0xA5
-#define BASELINE_SAVE_INTERVAL (60UL * 60UL * 1000UL)  // Her 1 saatte kaydet
+#define BASELINE_SAVE_INTERVAL (60UL * 60UL * 1000UL)
 unsigned long lastBaselineSave = 0;
 
 void saveBaseline() {
   uint16_t baseline = ccs.getBaseline();
-  // update() sadece değer değiştiyse yazar → EEPROM ömrünü korur
   EEPROM.update(EEPROM_BASELINE_ADDR,     baseline & 0xFF);
   EEPROM.update(EEPROM_BASELINE_ADDR + 1, (baseline >> 8) & 0xFF);
   EEPROM.update(EEPROM_BASELINE_ADDR + 2, EEPROM_MAGIC);
-  Serial.print("Baseline kaydedildi: 0x");
+  Serial.print(F("Baseline kaydedildi: 0x"));
   Serial.println(baseline, HEX);
 }
 
@@ -72,13 +84,37 @@ bool restoreBaseline() {
   uint16_t baseline = EEPROM.read(EEPROM_BASELINE_ADDR) |
                       (EEPROM.read(EEPROM_BASELINE_ADDR + 1) << 8);
   ccs.setBaseline(baseline);
-  Serial.print("Baseline geri yuklendi: 0x");
+  Serial.print(F("Baseline geri yuklendi: 0x"));
   Serial.println(baseline, HEX);
   return true;
 }
 
-// ── 3) Datasheet aralık kontrolü ────────────────────────────────
-//  CO2: 400-8192 ppm,  TVOC: 0-1187 ppb (CCS811B datasheet)
+// ── Zorla sistem yeniden başlatma ────────────────────────────────
+void forceReset() {
+  Serial.println(F("[SYS] Sistem zorla yeniden baslatiliyor..."));
+  Serial.flush();
+  wdt_enable(WDTO_15MS);
+  while (1);
+}
+
+// ── ESP8266 "ready" bekleme (3 yerde aynı döngü vardı) ──────────
+// timeout_ms: maksimum bekleme süresi; true = "ready" alındı
+bool waitForESPReady(unsigned long timeout_ms) {
+  const char READY[] = "ready";
+  uint8_t mi = 0;
+  unsigned long t = millis();
+  while (millis() - t < timeout_ms) {
+    wdt_reset();
+    while (Serial2.available()) {
+      char c = (char)Serial2.read();
+      mi = (c == READY[mi]) ? mi + 1 : (c == READY[0] ? 1 : 0);
+      if (mi == 5) return true;
+    }
+  }
+  return false;
+}
+
+// ── Datasheet aralık kontrolü ────────────────────────────────────
 #define CO2_MIN   400
 #define CO2_MAX   8192
 #define VOC_MIN   0
@@ -89,99 +125,93 @@ bool ccsRangeValid(int rawCo2, int rawVoc) {
           rawVoc >= VOC_MIN && rawVoc <= VOC_MAX);
 }
 
-// ── 4) EMA filtresi (Exponential Moving Average) ────────────────
-//  SMA (basit ortalama) yerine EMA kullanıyoruz çünkü:
-//  - Sabit hafıza (buffer dizisi yok, sadece 2 float)
-//  - Gerçek değişimlere daha hızlı tepki verir
-//  - Endüstriyel sensör filtrelemesinde standart yaklaşım
-//  alpha=0.3  →  yeni değer %30, eski ortalama %70 ağırlıklı
+// ── EMA filtresi ─────────────────────────────────────────────────
 #define EMA_ALPHA  0.3f
 
-float emaCo2 = -1;   // -1 = henüz başlatılmadı
+float emaCo2 = -1;
 float emaVoc = -1;
 
-// ── 5) Rate-of-Change limiter ───────────────────────────────────
-//  Fiziksel kısıt: normal bir odada CO2, 2 sn'de en fazla ~80 ppm değişebilir.
-//  Bunun üzerindeki atlama sensör artefaktıdır.
+// ── Rate-of-Change limiter ───────────────────────────────────────
 #define CO2_MAX_RATE  80    // ppm/okuma (2 sn aralıkla)
 #define VOC_MAX_RATE  30    // ppb/okuma
 
 int lastValidCo2 = -1;
 int lastValidVoc = -1;
 
-// ── 6) Consecutive-spike sayacı ─────────────────────────────────
-//  Eğer 5 ardışık okuma da "spike" geliyorsa, ortam gerçekten değişmiş
-//  olabilir.  Bu durumda EMA'yı sıfırla ve yeni değeri kabul et.
+// ── Consecutive-spike sayacı ─────────────────────────────────────
 #define MAX_CONSECUTIVE_REJECTS  5
 uint8_t consecutiveRejects = 0;
 
-// ── 7) Bozuk baseline tespiti ────────────────────────────────────
-//  30 ardışık "aralik disi" → EEPROM baseline bozuk, sil ve yeniden başlat
+// ── Bozuk baseline tespiti ───────────────────────────────────────
 #define MAX_ARALIK_DISI_RESETS  30
 uint8_t  aralikDisiSayaci           = 0;
 bool     baselineOtomatikSifirlandi = false;
 uint16_t gecerliOkumaSayaci         = 0;
 
-// ── Ana filtre fonksiyonu ───────────────────────────────────────
+// ── Ana filtre fonksiyonu ────────────────────────────────────────
 bool ccsFilter(int rawCo2, int rawVoc) {
 
-  // Warm-up devam ediyorsa hiçbir değer gönderme
+  // Warm-up devam ediyorsa hiçbir değer gönderme (dakikada bir logla)
   if (millis() - ccsStartTime < CCS_WARMUP_MS) {
-    unsigned long kalanMs = CCS_WARMUP_MS - (millis() - ccsStartTime);
-    unsigned long kalanDk = kalanMs / 60000;
-    unsigned long kalanSn = (kalanMs % 60000) / 1000;
-    Serial.print("[CCS] Isinma suresi, kalan: ");
-    Serial.print(kalanDk); Serial.print("dk "); Serial.print(kalanSn); Serial.println("sn");
+    static unsigned long lastWarmupLog = 0;
+    if (millis() - lastWarmupLog >= 60000) {
+      lastWarmupLog = millis();
+      unsigned long kalanMs = CCS_WARMUP_MS - (millis() - ccsStartTime);
+      unsigned long kalanDk = kalanMs / 60000;
+      unsigned long kalanSn = (kalanMs % 60000) / 1000;
+      Serial.print(F("[CCS] Isinma suresi, kalan: "));
+      Serial.print(kalanDk); Serial.print(F("dk ")); Serial.print(kalanSn); Serial.println(F("sn"));
+    }
     return false;
   }
 
-  // Warm-up ilk kez bitti — SRAM flag'ini işaretle
   if (!warmupDone) {
     warmupDone = true;
     warmupMagic = WARMUP_MAGIC_VAL;
-    Serial.println("[CCS] Isinma tamamlandi, olcumler basliyor.");
+    Serial.println(F("[CCS] Isinma tamamlandi, olcumler basliyor."));
   }
 
-  // Datasheet aralık kontrolü
   if (!ccsRangeValid(rawCo2, rawVoc)) {
-    Serial.print("[CCS] Aralik disi: CO2=");
-    Serial.print(rawCo2); Serial.print(" VOC="); Serial.println(rawVoc);
+    Serial.print(F("[CCS] Aralik disi: CO2="));
+    Serial.print(rawCo2); Serial.print(F(" VOC=")); Serial.println(rawVoc);
+    invalidCo2 = rawCo2;
+    invalidVoc = rawVoc;
+    invalidPm25 = pm25;
+    invalidPm10 = pm10;
+    invalidSamplePending = true;
+    wsSendRawLog("[CCS] Aralik disi olcum algilandi");
     aralikDisiSayaci++;
     if (!baselineOtomatikSifirlandi && aralikDisiSayaci >= MAX_ARALIK_DISI_RESETS) {
-      Serial.println("[CCS] UYARI: Surekli aralik disi okuma — EEPROM baseline bozuk olabilir.");
-      Serial.println("[CCS] EEPROM baseline silindi. Arduino'yu yeniden baslatiniz (tam isinma yapilacak).");
-      EEPROM.update(EEPROM_BASELINE_ADDR + 2, 0x00);  // magic byte'ı geçersiz kıl
-      warmupMagic = 0;
-      warmupDone  = false;
-      baselineOtomatikSifirlandi = true;
+      Serial.println(F("[CCS] UYARI: Surekli aralik disi okuma - EEPROM baseline bozuk olabilir."));
+      Serial.println(F("[CCS] EEPROM baseline silindi. Sistem yeniden baslatiliyor..."));
+      wsSendRawLog("[CCS] EEPROM baseline bozuk olabilir, sistem resetlenecek");
+      EEPROM.update(EEPROM_BASELINE_ADDR + 2, 0x00);
+      forceReset();
     }
     return false;
   }
   aralikDisiSayaci = 0;
-  gecerliOkumaSayaci++;
+  // Taşmayı önle: uint16_t max = 65535; baseline koşulu >= 100 olduğundan
+  // bir kez geçince değer artmaya devam etmez, baseline her saat kaydedilir
+  if (gecerliOkumaSayaci < 65000) gecerliOkumaSayaci++;
 
-  // Reset değeri tespiti (400 ± 15 ppm ve VOC==0)
   if (rawCo2 <= 415 && rawVoc == 0) {
-    Serial.println("[CCS] Reset degeri tespit edildi, atlandi.");
-    consecutiveRejects++;
+    Serial.println(F("[CCS] Reset degeri tespit edildi, atlandi."));
     return false;
   }
 
-  // Rate-of-change kontrolü (ilk geçerli okumadan sonra aktif)
   if (lastValidCo2 >= 0) {
     int deltaCo2 = abs(rawCo2 - lastValidCo2);
     int deltaVoc = abs(rawVoc - lastValidVoc);
 
     if (deltaCo2 > CO2_MAX_RATE || deltaVoc > VOC_MAX_RATE) {
       consecutiveRejects++;
-      Serial.print("[CCS] Ani degisim atildi: dCO2=");
-      Serial.print(deltaCo2); Serial.print(" dVOC="); Serial.print(deltaVoc);
-      Serial.print(" (ardisik:"); Serial.print(consecutiveRejects);
-      Serial.println(")");
+      Serial.print(F("[CCS] Ani degisim atildi: dCO2="));
+      Serial.print(deltaCo2); Serial.print(F(" dVOC=")); Serial.print(deltaVoc);
+      Serial.print(F(" (ardisik:")); Serial.print(consecutiveRejects); Serial.println(')');
 
-      // Çok fazla ardışık red → ortam gerçekten değişmiş olabilir
       if (consecutiveRejects >= MAX_CONSECUTIVE_REJECTS) {
-        Serial.println("[CCS] Ardisik red limiti asildi, EMA sifirlaniyor.");
+        Serial.println(F("[CCS] Ardisik red limiti asildi, EMA sifirlaniyor."));
         emaCo2 = rawCo2;
         emaVoc = rawVoc;
         lastValidCo2 = rawCo2;
@@ -195,11 +225,9 @@ bool ccsFilter(int rawCo2, int rawVoc) {
     }
   }
 
-  // Geçerli okuma — EMA uygula
   consecutiveRejects = 0;
 
   if (emaCo2 < 0) {
-    // İlk geçerli okuma → EMA'yı başlat
     emaCo2 = rawCo2;
     emaVoc = rawVoc;
   } else {
@@ -216,18 +244,17 @@ bool ccsFilter(int rawCo2, int rawVoc) {
 
 // ── WebSocket yardımcı fonksiyonları ─────────────────────────────
 
-// RFC 6455 text frame, client->server maskelemesi ile gönderir
-void wsSendText(const String& msg) {
+void wsSendText(const char* msg) {
   if (!client.connected()) return;
 
   uint8_t mask[4] = {0x37, 0xfa, 0x21, 0x3d};
-  int len = msg.length();
+  int len = strlen(msg);
 
-  client.write((uint8_t)0x81);                    // FIN + text opcode
+  client.write((uint8_t)0x81);
   if (len < 126) {
-    client.write((uint8_t)(0x80 | len));          // MASK=1, 7-bit uzunluk
+    client.write((uint8_t)(0x80 | len));
   } else {
-    client.write((uint8_t)(0x80 | 126));          // MASK=1, 16-bit uzunluk
+    client.write((uint8_t)(0x80 | 126));
     client.write((uint8_t)(len >> 8));
     client.write((uint8_t)(len & 0xFF));
   }
@@ -237,124 +264,193 @@ void wsSendText(const String& msg) {
   }
 }
 
-// HTTP Upgrade handshake'i gerçekleştirir
+void wsSendRawLog(const char* msg) {
+  if (!client.connected()) return;
+  wsSendText(msg);
+}
+
 bool wsHandshake() {
+  // Bu stringler client'e gönderildiği için F() kullanılmıyor —
+  // WiFiEspAT'ın print(__FlashStringHelper*) davranışı kütüphaneye bağlı
   client.print("GET /ws HTTP/1.1\r\n");
-  client.print("Host: " WS_HOST ":" + String(WS_PORT) + "\r\n");
+  client.print("Host: " WS_HOST ":80\r\n");
   client.print("Upgrade: websocket\r\n");
   client.print("Connection: Upgrade\r\n");
   client.print("Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n");
   client.print("Sec-WebSocket-Version: 13\r\n");
   client.print("\r\n");
 
-  // Tüm yanıt header'larını oku
-  String response = "";
-  unsigned long t = millis();
-  while (millis() - t < 5000) {
+  // 160 byte: HTTP/1.1 101 yanıtı tipik olarak ~130 byte; 256'ya gerek yok (96 byte SRAM kazanımı)
+  static char response[160];
+  memset(response, 0, sizeof(response));
+  uint16_t idx = 0;
+  unsigned long tStart = millis();
+  unsigned long tIdle  = millis();
+  while (millis() - tStart < 7000 && millis() - tIdle < 3000) {
+    wdt_reset();
     while (client.available()) {
-      response += (char)client.read();
-      t = millis();
+      char c = (char)client.read();
+      if (idx < sizeof(response) - 1) response[idx++] = c;
+      tIdle = millis();
     }
-    if (response.indexOf("\r\n\r\n") >= 0) break;
+    if (idx > 4 && strstr(response, "\r\n\r\n")) break;
   }
-  return response.indexOf("101") >= 0;
+  return strstr(response, "101") != NULL;
 }
 
-// WebSocket bağlantısını kurar (TCP + handshake)
 bool wsConnect() {
-  Serial.print("WebSocket baglaniliyor " WS_HOST ":" + String(WS_PORT) + " ...");
+  Serial.print(F("WebSocket baglaniliyor " WS_HOST ":80 ..."));
   if (!client.connect(WS_HOST, WS_PORT)) {
-    Serial.println(" TCP hatasi!");
+    Serial.println(F(" TCP hatasi!"));
     return false;
   }
   if (!wsHandshake()) {
-    Serial.println(" Handshake hatasi!");
+    Serial.println(F(" Handshake hatasi!"));
     client.stop();
     return false;
   }
-  Serial.println(" Baglandi!");
+  Serial.println(F(" Baglandi!"));
   return true;
 }
 
-// Önce ana ağa, başarısız olursa yedek ağa bağlanmayı dener
+// Önce ana ağa, başarısız olursa yedek ağa bağlanmayı dener.
+// WiFi AP bağlantısı kurulduktan sonra gerçek internet erişimi de test edilir;
+// AP'ye bağlı ama internetsiz ağlar (captive portal, kötü yurt ağı vb.) fallback'e yönlendirir.
 bool wifiBaglan() {
-  Serial.print("WiFi baglaniliyor (ana ag): ");
+  Serial.print(F("WiFi baglaniliyor (ana ag): "));
   Serial.println(ssid);
+  // WiFi.begin() kütüphane içinde AT+CWJAP bekler; bu süre WDT zaman aşımını (8sn)
+  // geçebilir. WDT'yi geçici devre dışı bırakıp kendi döngümüzde yönetiyoruz.
+  wdt_disable();
   WiFi.begin(ssid, pass);
+  wdt_reset(); wdt_enable(WDTO_8S);
   unsigned long t = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) {
+    wdt_reset();
     delay(500);
-    Serial.print(".");
+    Serial.print('.');
   }
   Serial.println();
-  if (WiFi.status() == WL_CONNECTED) return true;
+  if (WiFi.status() == WL_CONNECTED) {
+    // AP bağlantısı var; gerçek internet erişimini test et.
+    // client.connect() WDT (8sn) süresini aşabileceğinden WiFi.begin() gibi devre dışı bırakıyoruz.
+    Serial.println(F("Internet erisimi kontrol ediliyor..."));
+    wdt_disable();
+    bool internetOk = client.connect(WS_HOST, WS_PORT);
+    wdt_reset(); wdt_enable(WDTO_8S);
+    if (internetOk) {
+      client.stop();
+      Serial.println(F("Internet erisimi OK."));
+      return true;
+    }
+    Serial.println(F("WiFi baglandi ama internet erisimi yok, yedek aga geciliyor."));
+    WiFi.disconnect();
+    delay(500);
+  } else {
+    Serial.print(F("Ana ag basarisiz. Yedek ag deneniyor: "));
+  }
 
-  Serial.print("Ana ag basarisiz. Yedek ag deneniyor: ");
   Serial.println(ssidFallback);
-  WiFi.disconnect();
-  delay(500);
+  wdt_disable();
   WiFi.begin(ssidFallback, passFallback);
+  wdt_reset(); wdt_enable(WDTO_8S);
   t = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) {
+    wdt_reset();
     delay(500);
-    Serial.print(".");
+    Serial.print('.');
   }
   Serial.println();
   return (WiFi.status() == WL_CONNECTED);
 }
 
+// ESP8266 donanım reset (RST pinini anlık LOW yapar)
+void espHardReset() {
+  Serial.println(F("[ESP] Donanim reset uygulanıyor (RST pini)..."));
+  client.stop();
+  WiFi.disconnect();
+  delay(200);
+  digitalWrite(ESP_RST_PIN, LOW);
+  delay(100);
+  digitalWrite(ESP_RST_PIN, HIGH);
+  waitForESPReady(10000);
+  delay(2000);
+  while (Serial2.available()) Serial2.read();
+  // wdt_disable() YOK — WiFi.init() donkarsa WDT atar → reboot
+  wdt_reset();
+  WiFi.init(Serial2);
+  wdt_reset();
+  Serial.println(F("[ESP] Donanim reset tamamlandi."));
+}
+
 // WiFi + WebSocket tam yeniden bağlanma (ESP reset dahil)
 void tamYenidenBaglan() {
   static uint8_t basarisizSayaci = 0;
+  static uint8_t totalEspResets  = 0;  // başarılı bağlantıda sıfırlanır
 
-  // 3 ardışık başarısız denemeden sonra ESP'yi tamamen sıfırla
   if (basarisizSayaci >= 3) {
-    Serial.println("ESP8266 yeniden baslatiliyor (AT+RST)...");
+    totalEspResets++;
+    Serial.print(F("[ESP] Toplam ESP reset sayisi: "));
+    Serial.println(totalEspResets);
+
+    if (totalEspResets >= 5) {
+      Serial.println(F("[SYS] Cok fazla ESP reset, tam sistem yeniden baslatiliyor..."));
+      forceReset();
+    }
+
+    Serial.println(F("ESP8266 yeniden baslatiliyor (AT+RST)..."));
     client.stop();
     WiFi.disconnect();
+    wdt_reset();
     delay(500);
 
     Serial2.println("AT+RST");
-    String buf = "";
-    unsigned long t = millis();
-    while (millis() - t < 8000) {
-      while (Serial2.available()) {
-        buf += (char)Serial2.read();
-        if (buf.length() > 500) buf = buf.substring(250);
-      }
-      if (buf.indexOf("ready") >= 0) break;
-    }
+    bool atRstOk = waitForESPReady(8000);
     while (Serial2.available()) Serial2.read();
 
-    WiFi.init(Serial2);
+    if (atRstOk) {
+      Serial.println(F("[ESP] AT+RST basarili."));
+      delay(2000);
+      while (Serial2.available()) Serial2.read();
+      // wdt_disable() YOK — WiFi.init() donkarsa WDT atar → reboot
+      wdt_reset();
+      WiFi.init(Serial2);
+      wdt_reset();
+    } else {
+      Serial.println(F("[ESP] AT+RST cevap vermedi, donanim reset uygulanıyor..."));
+      espHardReset();
+    }
     basarisizSayaci = 0;
   }
 
-  // WiFi bağlantısı kontrol et
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi yeniden baglaniliyor...");
+    Serial.println(F("WiFi yeniden baglaniliyor..."));
+    wdt_disable();
     WiFi.disconnect();
+    wdt_reset(); wdt_enable(WDTO_8S);
     delay(500);
     if (!wifiBaglan()) {
-      Serial.println("WiFi baglantisi kurulamadi, tekrar denenecek.");
+      Serial.println(F("WiFi baglantisi kurulamadi, tekrar denenecek."));
       basarisizSayaci++;
       return;
     }
-    Serial.print("WiFi baglandi! IP: ");
+    Serial.print(F("WiFi baglandi! IP: "));
     Serial.println(WiFi.localIP());
   }
 
-  // WebSocket bağlantısını dene
   client.stop();
+  wdt_reset();
   delay(500);
   if (!wsConnect()) {
     basarisizSayaci++;
-    Serial.print("Basarisiz deneme: ");
+    Serial.print(F("Basarisiz deneme: "));
     Serial.print(basarisizSayaci);
-    Serial.println("/3");
+    Serial.println(F("/3"));
+    wdt_reset();
     delay(3000);
   } else {
     basarisizSayaci = 0;
+    totalEspResets  = 0;
   }
 }
 
@@ -362,58 +458,84 @@ void tamYenidenBaglan() {
 void wsHandleIncoming() {
   if (!client.available()) return;
 
-  // Frame header: byte 0 = FIN+opcode, byte 1 = uzunluk
   uint8_t b0 = client.read();
   if (!client.available()) return;
   uint8_t b1 = client.read();
 
-  uint8_t opcode = b0 & 0x0F;
-  uint8_t masked = (b1 & 0x80) >> 7;
-  uint64_t payloadLen = b1 & 0x7F;
+  uint8_t  opcode     = b0 & 0x0F;
+  uint8_t  masked     = (b1 & 0x80) >> 7;
+  uint16_t payloadLen = b1 & 0x7F;  // uint16_t: AVR'de uint64_t yazılım-emülasyonlu, gereksiz yavaş
 
   if (payloadLen == 126) {
+    unsigned long _t = millis();
+    while (client.available() < 2) {
+      wdt_reset();
+      if (millis() - _t > 2000) { client.stop(); return; }
+    }
     uint8_t ext[2];
     client.readBytes(ext, 2);
     payloadLen = ((uint16_t)ext[0] << 8) | ext[1];
   } else if (payloadLen == 127) {
-    // 64-bit uzunluk — bu boyutta ping gelmez, atla
     return;
   }
 
   uint8_t mask[4] = {0};
-  if (masked) client.readBytes(mask, 4);
+  if (masked) {
+    unsigned long _t = millis();
+    while (client.available() < 4) {
+      wdt_reset();
+      if (millis() - _t > 2000) { client.stop(); return; }
+    }
+    client.readBytes(mask, 4);
+  }
 
-  // Payload oku (ping için max 125 byte)
   uint8_t payload[125];
-  uint8_t readLen = (uint8_t)min((uint64_t)125, payloadLen);
+  uint8_t readLen = (uint8_t)min((uint16_t)125, payloadLen);
   for (uint8_t i = 0; i < readLen; i++) {
     uint8_t raw = client.available() ? client.read() : 0;
     payload[i] = masked ? (raw ^ mask[i % 4]) : raw;
   }
 
+  if (payloadLen > readLen) {
+    unsigned long drainStart = millis();
+    for (uint16_t i = readLen; i < payloadLen; i++) {
+      while (!client.available()) {
+        wdt_reset();
+        if (millis() - drainStart > 3000) { client.stop(); return; }
+      }
+      client.read();
+    }
+  }
+
   if (opcode == 0x9) {
-    // Ping alindi, maskeli Pong gonder (RFC 6455: client->server maskelenmeli)
     uint8_t pongMask[4] = {0x4A, 0xC3, 0x7E, 0x21};
-    client.write((uint8_t)0x8A);                   // FIN + pong opcode
-    client.write((uint8_t)(0x80 | readLen));       // MASK=1 + uzunluk
+    client.write((uint8_t)0x8A);
+    client.write((uint8_t)(0x80 | readLen));
     client.write(pongMask, 4);
     for (uint8_t i = 0; i < readLen; i++) {
       client.write((uint8_t)(payload[i] ^ pongMask[i % 4]));
     }
+  } else if (opcode == 0x8) {
+    client.stop();
   }
-  // opcode 0x8 = connection close — baglanti kopacak, loop halleder
 }
 
 
 void setup() {
+  MCUSR &= ~(1 << WDRF);
+  wdt_disable();
+
   Serial.begin(9600);
   Serial1.begin(9600);
   Serial2.begin(115200);
 
-  Serial.println("Sistem Baslatiliyor...");
-  Serial.println("-----------------------------------------");
+  Serial.println(F("Sistem Baslatiliyor..."));
+  Serial.println(F("-----------------------------------------"));
 
-  // Sensörler
+  pmsWarmupEndTime = 0;
+
+  pinMode(ESP_RST_PIN, OUTPUT);
+  digitalWrite(ESP_RST_PIN, HIGH);
   pinMode(CCS_WAK_PIN, OUTPUT);
   digitalWrite(CCS_WAK_PIN, LOW);
   pinMode(PMS_SET_PIN, OUTPUT);
@@ -421,74 +543,119 @@ void setup() {
   delay(1000);
 
   if (!ccs.begin()) {
-    Serial.println("UYARI: CCS811 bulunamadi!");
+    Serial.println(F("UYARI: CCS811 bulunamadi!"));
   } else {
-    // Önceden kaydedilmiş baseline'ı geri yükle
     if (restoreBaseline()) {
-      Serial.println("CCS811 baseline EEPROM'dan yuklendi.");
+      Serial.println(F("CCS811 baseline EEPROM'dan yuklendi."));
     } else {
-      Serial.println("CCS811 baseline bulunamadi, ilk kalibrasyonda kaydedilecek.");
+      Serial.println(F("CCS811 baseline bulunamadi, ilk kalibrasyonda kaydedilecek."));
     }
   }
-  // Soft-reset tespiti: .noinit SRAM'ı magic + flag tutuyorsa sensör zaten ısınmış
+
   if (warmupMagic == WARMUP_MAGIC_VAL && warmupDone) {
-    ccsStartTime = millis() - CCS_WARMUP_MS;  // zaten ısındı gibi davran
-    Serial.println("[CCS] Soft-reset: sensor zaten isinmis, bekleme atlaniyor.");
+    ccsStartTime = millis() - CCS_WARMUP_MS;
+    Serial.println(F("[CCS] Soft-reset: sensor zaten isinmis, bekleme atlaniyor."));
   } else {
     warmupMagic = 0;
     warmupDone  = false;
     ccsStartTime = millis();
-    Serial.println("[CCS] Guc verildi, 20dk isinma suresi basliyor.");
+    Serial.println(F("[CCS] Guc verildi, 20dk isinma suresi basliyor."));
   }
 
-  // ESP8266 boot
-  Serial.println("ESP8266 baslatiliyor...");
+  // ESP8266 boot — WDT buradan itibaren AÇIK; donma durumunda kurtarıcı
+  Serial.println(F("ESP8266 baslatiliyor..."));
+  wdt_reset();
+  wdt_enable(WDTO_8S);
+
   Serial2.println("AT+RST");
-  String bootTampon = "";
-  unsigned long t = millis();
-  while (millis() - t < 8000) {
-    while (Serial2.available()) {
-      bootTampon += (char)Serial2.read();
-      if (bootTampon.length() > 500) bootTampon = bootTampon.substring(250);
-    }
-    if (bootTampon.indexOf("ready") >= 0) break;
-  }
+  waitForESPReady(8000);
   while (Serial2.available()) Serial2.read();
 
-  // WiFi bağlan
+  // "ready" sonrası ESP hâlâ boot mesajları gönderiyor; 2sn bekle
+  wdt_reset();
+  delay(2000);
+  while (Serial2.available()) Serial2.read();
+
+  // wdt_disable() YOK — WiFi.init() donkarsa WDT atar → clean reboot
+  wdt_reset();
   WiFi.init(Serial2);
+  wdt_reset();
+
   if (WiFi.status() == WL_NO_MODULE) {
-    Serial.println("HATA: ESP8266 ile iletisim kurulamadi!");
-    while (true);
+    Serial.println(F("HATA: ESP8266 ile iletisim kurulamadi, yeniden baslatiliyor..."));
+    forceReset();
   }
 
-  while (!wifiBaglan()) {
-    Serial.println("Her iki WiFi de basarisiz, yeniden deneniyor...");
-    delay(3000);
+  // WiFi bağlan — 5 başarısız denemeden sonra forceReset()
+  {
+    uint8_t retries = 0;
+    while (!wifiBaglan()) {
+      Serial.println(F("Her iki WiFi de basarisiz, yeniden deneniyor..."));
+      if (++retries >= 5) {
+        Serial.println(F("WiFi tamamen basarisiz, sistem yeniden baslatiliyor..."));
+        forceReset();
+      }
+      wdt_reset();
+      delay(3000);
+    }
   }
-  Serial.print("WiFi baglandi! IP: ");
+  Serial.print(F("WiFi baglandi! IP: "));
   Serial.println(WiFi.localIP());
 
-  // WebSocket bağlan
-  while (!wsConnect()) {
-    Serial.println("WebSocket yeniden deneniyor (3sn)...");
-    delay(3000);
+  // WebSocket bağlan — 10 başarısız denemeden sonra forceReset()
+  {
+    uint8_t retries = 0;
+    while (!wsConnect()) {
+      Serial.println(F("WebSocket yeniden deneniyor (3sn)..."));
+      if (++retries >= 10) {
+        Serial.println(F("WebSocket tamamen basarisiz, sistem yeniden baslatiliyor..."));
+        forceReset();
+      }
+      wdt_reset();
+      delay(3000);
+    }
   }
 
-  Serial.println("-----------------------------------------");
+  wdt_reset();
+  Serial.println(F("-----------------------------------------"));
 }
 
 // ── Loop ─────────────────────────────────────────────────────────
 
 void loop() {
-  // Gelen tüm frame'leri işle (ping → pong)
-  while (client.available() >= 2) wsHandleIncoming();
+  wdt_reset();
 
-  // CCS811 oku
-  if (ccs.available() && !ccs.readData()) {
-    int rawCo2 = ccs.geteCO2();
-    int rawVoc = ccs.getTVOC();
-    ccsOk = ccsFilter(rawCo2, rawVoc);
+  // Gelen frame'leri işle — maksimum 1500ms; sunucu flood'larsa sensör okumayı engellemesin
+  {
+    unsigned long frameStart = millis();
+    while (client.available() >= 2 && millis() - frameStart < 1500) {
+      wdt_reset();
+      wsHandleIncoming();
+    }
+  }
+
+  // CCS811 oku — ardışık okuma hatalarında sensörü yeniden başlat
+  {
+    static uint8_t ccsReadErrors = 0;
+    if (ccs.available()) {
+      if (ccs.readData()) {
+        if (++ccsReadErrors >= 20) {
+          Serial.println(F("[CCS] Surekli okuma hatasi, sensor yeniden baslatiliyor..."));
+          ccs.begin();
+          ccsReadErrors = 0;
+        }
+      } else {
+        ccsReadErrors = 0;
+        int rawCo2 = ccs.geteCO2();
+        int rawVoc = ccs.getTVOC();
+        if (ccsFilter(rawCo2, rawVoc)) {
+          ccsOk   = true;
+          ccsFresh = true;
+        } else {
+          ccsFresh = false;
+        }
+      }
+    }
   }
 
   // PMS5003 oku
@@ -496,43 +663,73 @@ void loop() {
     pm25 = data.PM_AE_UG_2_5;
     pm10 = data.PM_AE_UG_10_0;
     pmsOk = true;
+    pmsWarmupEndTime = 0;
+  }
+
+  // PMS sensör ölü-mü kontrolü: ısınma bittikten 3 dk boyunca hâlâ veri gelmediyse
+  if (!pmsOk && millis() - ccsStartTime >= CCS_WARMUP_MS) {
+    if (pmsWarmupEndTime == 0) {
+      pmsWarmupEndTime = millis();
+    } else if (millis() - pmsWarmupEndTime >= PMS_FAIL_TIMEOUT_MS) {
+      Serial.println(F("[PMS] Sensor 3dk boyunca cevap vermedi, PM degerler sifir kabul ediliyor."));
+      pm25 = 0;
+      pm10 = 0;
+      pmsOk = true;
+    }
   }
 
   // Her GONDERIM_ARALIGI ms'de bir gönder
   if (millis() - sonGonderimZamani >= GONDERIM_ARALIGI) {
     sonGonderimZamani = millis();
 
-    // Bağlantı kontrolü ve yeniden bağlanma
     if (!client.connected()) {
-      Serial.println("Baglanti koptu, yeniden baglaniliyor...");
+      Serial.println(F("Baglanti koptu, yeniden baglaniliyor..."));
       tamYenidenBaglan();
-      return; // Bu turda gönderme yapma, sonraki iterasyonda devam et
-    }
-
-    // Sensör hazır değilse gönderme (CCS ısınma süresindeyse mesaj basma, zaten ccsFilter basar)
-    if (!ccsOk || !pmsOk) {
-      bool ccsIsiniyor = (millis() - ccsStartTime < CCS_WARMUP_MS);
-      if (!ccsIsiniyor) {
-        Serial.println("Sensor hazir degil, gonderim atlandi.");
-      }
       return;
     }
 
-    // JSON paketi oluştur
-    String json = "{";
-    json += "\"co2\":"  + String(co2)  + ",";
-    json += "\"voc\":"  + String(voc)  + ",";
-    json += "\"pm25\":" + String(pm25) + ",";
-    json += "\"pm10\":" + String(pm10);
-    json += "}";
+    if (invalidSamplePending) {
+      char invalidJson[64];
+      snprintf(invalidJson, sizeof(invalidJson), "{\"co2\":%d,\"voc\":%d,\"pm25\":%d,\"pm10\":%d}",
+               invalidCo2, invalidVoc, invalidPm25, invalidPm10);
+      wsSendText(invalidJson);
+      Serial.print(F("[WS] Gecersiz ornek gonderildi: "));
+      Serial.println(invalidJson);
+      invalidSamplePending = false;
+    }
+
+    if (lastDataSent > 0 &&
+        millis() - ccsStartTime >= CCS_WARMUP_MS &&
+        millis() - lastDataSent  >= MAX_SILENT_MS) {
+      Serial.println(F("[WD] 5dk boyunca veri gonderilmedi, baglanti sifirlaniyor..."));
+      client.stop();
+      tamYenidenBaglan();
+      lastDataSent = millis();
+      return;
+    }
+
+    if (!ccsOk || !pmsOk || !ccsFresh) {
+      return;
+    }
+
+    char json[64];
+    snprintf(json, sizeof(json), "{\"co2\":%d,\"voc\":%d,\"pm25\":%d,\"pm10\":%d}",
+             co2, voc, pm25, pm10);
 
     wsSendText(json);
+    lastDataSent = millis();
+    ccsFresh = false;
 
-    // Serial monitor'e de yaz
+    if (!client.connected()) {
+      Serial.println(F("[WS] Gonderim sonrasi baglanti koptu!"));
+      tamYenidenBaglan();
+      return;
+    }
+
     Serial.println(json);
   }
 
-  // ── Periyodik baseline kaydetme (her 1 saatte) ──
+  // Periyodik baseline kaydetme (her 1 saatte)
   if (millis() - ccsStartTime >= CCS_WARMUP_MS &&
       millis() - lastBaselineSave >= BASELINE_SAVE_INTERVAL &&
       gecerliOkumaSayaci >= 100) {

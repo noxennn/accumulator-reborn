@@ -156,6 +156,12 @@
   "actions": {
     "refresh": "Yenile"
   },
+  "threshold": {
+    "exceededIntervals": "Eşik Aşılan Aralıklar",
+    "noExceededIntervals": "Bu dönemde eşik aşımı yok",
+    "minSuffix": " dk",
+    "focused": "odaklandı"
+  },
   "watch": {
     "title": "Canlı İzleme",
     "connected": "Bağlı",
@@ -170,6 +176,16 @@
     "samplingRate": "Örnekleme aralığı",
     "points": "nokta",
     "noDataInWindow": "Son {{period}} saniyede veri yok.",
-    "samplingHint": "Sensör yaklaşık her {{interval}} saniyede veri gönderiyor. Daha geniş pencere seçebilirsiniz."
+    "samplingHint": "Sensör yaklaşık her {{interval}} saniyede veri gönderiyor. Daha geniş pencere seçebilirsiniz.",
+    "allData": "Tüm Veriler",
+    "records": "kayıt",
+    "logs": "Arduino Logları",
+    "logsEmpty": "Log bekleniyor...",
+    "invalidData": "Geçersiz Veriler",
+    "invalidEmpty": "Geçersiz veri yok",
+    "field": "Alan",
+    "value": "Değer",
+    "reason": "Neden",
+    "message": "Mesaj"
   }
 }

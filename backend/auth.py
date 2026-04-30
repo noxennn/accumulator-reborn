@@ -42,6 +42,18 @@ def authenticate_user(db: Session, email: str, password: str):
         return False
     return user
 
+def get_user_from_token(token: str, db: Session):
+    """Validate a raw JWT token string and return the matching User, or None."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            return None
+        return get_user_by_email(db, email)
+    except JWTError:
+        return None
+
+
 def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

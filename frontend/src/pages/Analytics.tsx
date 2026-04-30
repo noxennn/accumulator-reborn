@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, AreaChart, Area, ComposedChart, Scatter
+  ResponsiveContainer, AreaChart, Area, ComposedChart, Scatter,
+  ReferenceArea,
 } from 'recharts';
 import { format, subDays } from 'date-fns';
 import { tr, enUS, type Locale } from 'date-fns/locale';
@@ -10,6 +11,20 @@ import { FileText, FileDown, RefreshCw } from 'lucide-react';
 import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 import { analyticsApi } from '../lib/analyticsApi';
+import { sensorApi } from '../lib/sensorApi';
+import { authApi } from '../lib/api';
+
+interface ExceededInterval {
+  metric: string;
+  start: string;
+  end: string;
+  threshold: number;
+  max_value: number;
+  avg_value: number;
+  duration_minutes: number;
+}
+
+const METRIC_LABELS: Record<string, string> = { co2: 'CO₂', pm25: 'PM2.5', pm10: 'PM10', voc: 'VOC' };
 
 // ── Sabitler ────────────────────────────────────────────────────────
 
@@ -72,6 +87,11 @@ const Analytics = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Threshold exceedance intervals
+  const [exceededIntervals, setExceededIntervals] = useState<ExceededInterval[]>([]);
+  const [hoveredInterval, setHoveredInterval] = useState<ExceededInterval | null>(null);
+  const [selectedInterval, setSelectedInterval] = useState<ExceededInterval | null>(null);
+
   const metrics = [
     { id: 'co2',  name: t('sensors.co2'),  color: '#8884d8', unit: t('units.co2') },
     { id: 'pm25', name: t('sensors.pm25'), color: '#82ca9d', unit: t('units.pm')  },
@@ -119,6 +139,17 @@ const Analytics = () => {
   }, [getDateRange, period, t]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── Eşik aşım aralıklarını çek ───────────────────────────────────
+  useEffect(() => {
+    if (!authApi.isAuthenticated() || loading || !data.length) return;
+    const { start, end } = getDateRange();
+    setSelectedInterval(null);
+    setHoveredInterval(null);
+    sensorApi.getExceededIntervals(start, end)
+      .then(setExceededIntervals)
+      .catch(() => setExceededIntervals([]));
+  }, [data, loading]);
 
   // ── İstatistik çek ───────────────────────────────────────────────
   useEffect(() => {
@@ -206,8 +237,38 @@ const Analytics = () => {
   };
 
   // ── Grafik render ────────────────────────────────────────────────
+
+  const findClosestTimestamp = (isoTs: string): string | null => {
+    if (!data.length) return null;
+    const target = new Date(isoTs).getTime();
+    let best = data[0];
+    let bestDiff = Math.abs(new Date(best.timestamp).getTime() - target);
+    for (const p of data) {
+      const diff = Math.abs(new Date(p.timestamp).getTime() - target);
+      if (diff < bestDiff) { bestDiff = diff; best = p; }
+    }
+    return best.timestamp ?? null;
+  };
+
+  const activeInterval = hoveredInterval ?? selectedInterval;
+
   const renderChart = () => {
     const ChartComp = { line: LineChart, area: AreaChart, composed: ComposedChart }[chartType];
+    const refArea = activeInterval ? (() => {
+      const x1 = findClosestTimestamp(activeInterval.start);
+      const x2 = findClosestTimestamp(activeInterval.end);
+      if (!x1 || !x2) return null;
+      return (
+        <ReferenceArea
+          x1={x1}
+          x2={x2}
+          fill="rgba(239,68,68,0.15)"
+          stroke="rgba(239,68,68,0.4)"
+          strokeOpacity={0.8}
+        />
+      );
+    })() : null;
+
     return (
       <ResponsiveContainer width="100%" height="100%">
         <ChartComp data={data}>
@@ -230,6 +291,7 @@ const Analytics = () => {
             }}
           />
           <Legend wrapperStyle={{ paddingTop: 20, color: '#6b7280' }} />
+          {refArea}
           {selectedMetrics.map(id => {
             const m = metrics.find(x => x.id === id)!;
             if (chartType === 'area') return (
@@ -429,6 +491,53 @@ const Analytics = () => {
           )}
         </div>
       </div>
+
+      {/* ── Eşik aşım aralıkları ── */}
+      {authApi.isAuthenticated() && (
+        <div className="card bg-base-100 shadow-xl">
+          <div className="card-body py-4">
+            <h2 className="card-title text-base mb-2">{t('threshold.exceededIntervals')}</h2>
+            {exceededIntervals.length === 0 ? (
+              <p className="text-sm opacity-40">{t('threshold.noExceededIntervals')}</p>
+            ) : (
+              <ul className="space-y-1 max-h-52 overflow-y-auto pr-1">
+                {exceededIntervals.map((iv, i) => (
+                  <li
+                    key={i}
+                    onMouseEnter={() => setHoveredInterval(iv)}
+                    onMouseLeave={() => setHoveredInterval(null)}
+                    onClick={() => {
+                      setSelectedInterval(prev => prev === iv ? null : iv);
+                      chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }}
+                    className={`flex items-center gap-3 text-xs px-2 py-1.5 rounded cursor-pointer select-none transition-colors ${
+                      selectedInterval === iv
+                        ? 'bg-error/20 ring-1 ring-error/40'
+                        : hoveredInterval === iv
+                        ? 'bg-error/10'
+                        : 'hover:bg-base-300'
+                    }`}
+                  >
+                    <span className="font-bold uppercase w-12 shrink-0 text-error">
+                      {METRIC_LABELS[iv.metric] ?? iv.metric}
+                    </span>
+                    <span className="opacity-70 shrink-0">
+                      {new Date(iv.start).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      {' – '}
+                      {new Date(iv.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className="ml-auto font-mono text-error shrink-0">↑{iv.max_value}</span>
+                    <span className="opacity-50 shrink-0">{iv.duration_minutes}{t('threshold.minSuffix')}</span>
+                    {selectedInterval === iv && (
+                      <span className="badge badge-error badge-xs ml-1">{t('threshold.focused')}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── İstatistik kartları ── */}
       {selectedMetrics.length > 0 && (

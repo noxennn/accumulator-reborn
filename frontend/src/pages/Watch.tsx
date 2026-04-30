@@ -10,10 +10,22 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { useWebSocketData } from '../hooks/useWebSocketData';
+import { useWebSocketData, LiveDataPoint } from '../hooks/useWebSocketData';
 
 const PERIODS = [1, 5, 15, 30, 60] as const;
 type Period = (typeof PERIODS)[number];
+
+const STATUS_PRIORITY = { red: 2, yellow: 1, green: 0 } as const;
+
+function getRowBg(p: LiveDataPoint): string {
+  const s = p.threshold_status;
+  if (!s) return '';
+  const worst = (Object.values(s) as Array<keyof typeof STATUS_PRIORITY>)
+    .reduce((a, b) => (STATUS_PRIORITY[a] >= STATUS_PRIORITY[b] ? a : b));
+  if (worst === 'red')    return 'bg-error/15';
+  if (worst === 'yellow') return 'bg-warning/15';
+  return 'bg-success/10';
+}
 
 const METRICS = [
   { key: 'co2'  as const, label: 'CO₂',   unit: 'ppm',    color: '#6366f1' },
@@ -24,7 +36,7 @@ const METRICS = [
 
 export default function Watch() {
   const { t } = useTranslation();
-  const { dataBuffer, isConnected, error } = useWebSocketData();
+  const { dataBuffer, logsBuffer, invalidBuffer, isConnected, error } = useWebSocketData();
   const [period, setPeriod] = useState<Period>(60);
   const [highlightedTimestamp, setHighlightedTimestamp] = useState<string | null>(null);
   const [chartPulse, setChartPulse] = useState(false);
@@ -85,7 +97,7 @@ export default function Watch() {
     [windowedData]
   );
 
-  const last10 = useMemo(() => dataBuffer.slice(-10).reverse(), [dataBuffer]);
+  const allData = useMemo(() => dataBuffer.slice().reverse(), [dataBuffer]);
 
   return (
     <div className="px-0 py-2 md:py-4 space-y-4 md:space-y-6">
@@ -144,11 +156,11 @@ export default function Watch() {
         <div className="card-body p-4 md:p-5">
           <div className="flex items-center justify-between mb-3 gap-2">
             <h2 className="card-title text-base">{t('watch.liveData')}</h2>
-            <span className="text-xs opacity-60">{t('watch.latestTen')}</span>
+            <span className="text-xs opacity-60">{allData.length} {t('watch.records')}</span>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-72 overflow-y-auto">
             <table className="table table-sm">
-              <thead className="text-xs uppercase tracking-wide opacity-70">
+              <thead className="text-xs uppercase tracking-wide opacity-70 sticky top-0 bg-base-200 z-10">
                 <tr>
                   <th>{t('watch.time')}</th>
                   <th>CO₂ (ppm)</th>
@@ -158,14 +170,14 @@ export default function Watch() {
                 </tr>
               </thead>
               <tbody>
-                {last10.length === 0 ? (
+                {allData.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="text-center opacity-50 py-4">
                       {t('watch.waiting')}
                     </td>
                   </tr>
                 ) : (
-                  last10.map((p, i) => (
+                  allData.map((p, i) => (
                     <tr
                       key={p.timestamp + i}
                       className={`transition-all duration-700 ${
@@ -173,7 +185,7 @@ export default function Watch() {
                       } ${
                         p.timestamp === highlightedTimestamp
                           ? 'bg-primary/15 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
-                          : ''
+                          : getRowBg(p)
                       }`}
                     >
                       <td className="font-mono">
@@ -250,7 +262,17 @@ export default function Watch() {
                   />
                   <YAxis tick={{ fontSize: 10 }} width={45} />
                   <Tooltip
-                    contentStyle={{ fontSize: 12 }}
+                    formatter={(v: number) => [
+                      typeof v === 'number' ? +v.toFixed(1) : v,
+                      `${label} (${unit})`
+                    ]}
+                    contentStyle={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '0.5rem',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                      fontSize: 12,
+                    }}
                     labelStyle={{ fontWeight: 600 }}
                   />
                   <Line
@@ -268,6 +290,82 @@ export default function Watch() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Arduino Logs */}
+        <div className="card bg-base-200 shadow border border-base-300">
+          <div className="card-body p-4">
+            <h2 className="card-title text-sm mb-2">{t('watch.logs')}</h2>
+            <div className="overflow-x-auto max-h-56 overflow-y-auto">
+              <table className="table table-sm">
+                <thead className="text-xs uppercase tracking-wide opacity-70 sticky top-0 bg-base-200 z-10">
+                  <tr>
+                    <th>{t('watch.time')}</th>
+                    <th>{t('watch.message')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {logsBuffer.length === 0 ? (
+                    <tr>
+                      <td colSpan={2} className="text-center opacity-50 py-4">
+                        {t('watch.logsEmpty')}
+                      </td>
+                    </tr>
+                  ) : (
+                    logsBuffer.slice().reverse().map((entry, i) => (
+                      <tr key={entry.timestamp + i}>
+                        <td className="font-mono text-xs whitespace-nowrap">
+                          {format(new Date(entry.timestamp), 'HH:mm:ss')}
+                        </td>
+                        <td className="font-mono text-xs break-all">{entry.message}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Invalid Data */}
+        <div className="card bg-base-200 shadow border border-base-300">
+          <div className="card-body p-4">
+            <h2 className="card-title text-sm mb-2">{t('watch.invalidData')}</h2>
+            <div className="overflow-x-auto max-h-56 overflow-y-auto">
+              <table className="table table-sm">
+                <thead className="text-xs uppercase tracking-wide opacity-70 sticky top-0 bg-base-200 z-10">
+                  <tr>
+                    <th>{t('watch.time')}</th>
+                    <th>{t('watch.field')}</th>
+                    <th>{t('watch.value')}</th>
+                    <th>{t('watch.reason')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invalidBuffer.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="text-center opacity-50 py-4">
+                        {t('watch.invalidEmpty')}
+                      </td>
+                    </tr>
+                  ) : (
+                    invalidBuffer.slice().reverse().map((entry, i) => (
+                      <tr key={entry.timestamp + i} title={`CO₂:${entry.co2} VOC:${entry.voc} PM2.5:${entry.pm25} PM10:${entry.pm10}`}>
+                        <td className="font-mono text-xs whitespace-nowrap">
+                          {format(new Date(entry.timestamp), 'HH:mm:ss')}
+                        </td>
+                        <td className="text-xs font-mono">{entry.field}</td>
+                        <td className="text-xs font-mono">{entry.value}</td>
+                        <td className="text-xs break-all">{entry.reason}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
