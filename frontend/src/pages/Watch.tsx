@@ -10,21 +10,16 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { useWebSocketData, LiveDataPoint } from '../hooks/useWebSocketData';
+import { useWebSocketData } from '../hooks/useWebSocketData';
 
 const PERIODS = [1, 5, 15, 30, 60] as const;
 type Period = (typeof PERIODS)[number];
 
-const STATUS_PRIORITY = { red: 2, yellow: 1, green: 0 } as const;
-
-function getRowBg(p: LiveDataPoint): string {
-  const s = p.threshold_status;
-  if (!s) return '';
-  const worst = (Object.values(s) as Array<keyof typeof STATUS_PRIORITY>)
-    .reduce((a, b) => (STATUS_PRIORITY[a] >= STATUS_PRIORITY[b] ? a : b));
-  if (worst === 'red')    return 'bg-error/15';
-  if (worst === 'yellow') return 'bg-warning/15';
-  return 'bg-success/10';
+function getStatusClass(status?: 'green' | 'yellow' | 'red'): string {
+  if (status === 'red')    return 'text-error font-medium';
+  if (status === 'yellow') return 'text-warning font-medium';
+  if (status === 'green')  return 'text-success';
+  return '';
 }
 
 const METRICS = [
@@ -185,16 +180,16 @@ export default function Watch() {
                       } ${
                         p.timestamp === highlightedTimestamp
                           ? 'bg-primary/15 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
-                          : getRowBg(p)
+                          : ''
                       }`}
                     >
                       <td className="font-mono">
                         {format(new Date(p.timestamp), 'HH:mm:ss')}
                       </td>
-                      <td>{p.co2.toFixed(0)}</td>
-                      <td>{p.voc.toFixed(0)}</td>
-                      <td>{p.pm25.toFixed(1)}</td>
-                      <td>{p.pm10.toFixed(1)}</td>
+                      <td className={getStatusClass(p.threshold_status?.co2)}>{p.co2.toFixed(0)}</td>
+                      <td className={getStatusClass(p.threshold_status?.voc)}>{p.voc.toFixed(0)}</td>
+                      <td className={getStatusClass(p.threshold_status?.pm25)}>{p.pm25.toFixed(1)}</td>
+                      <td className={getStatusClass(p.threshold_status?.pm10)}>{p.pm10.toFixed(1)}</td>
                     </tr>
                   ))
                 )}

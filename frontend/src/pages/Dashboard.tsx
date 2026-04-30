@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceArea } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import { RefreshCw } from 'lucide-react';
+import { subDays } from 'date-fns';
 
 import AQIIndicator from '../components/AQIIndicator';
 import CO2Indicator from '../components/CO2Indicator';
 import PM25Indicator from '../components/PM25Indicator';
 import PM10Indicator from '../components/PM10Indicator';
 import VOCIndicator from '../components/VOCIndicator';
-import AIPredictions from '../components/AIPredictions';
 import AlertIndicator from '../components/AlertIndicator';
 import { useAlerts } from '../hooks/useAlerts';
 import { useDailyStats } from '../hooks/useDailyStats';
@@ -28,7 +28,6 @@ interface ExceededInterval {
   duration_minutes: number;
 }
 
-const METRIC_LABELS: Record<string, string> = { co2: 'CO₂', pm25: 'PM2.5', pm10: 'PM10', voc: 'VOC' };
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -48,6 +47,7 @@ const Dashboard = () => {
   const [settings, setSettings] = useState<UserSettings | null>(null);
 
   const [trendPeriod, setTrendPeriod] = useState('15m');
+  const [datePreset, setDatePreset] = useState<'today' | '7d' | '14d' | '30d'>('today');
   const [startTime, setStartTime] = useState('00:00');
   const [endTime, setEndTime]     = useState(() => toHHMM(new Date()));
   const [timeRangeError, setTimeRangeError] = useState<string | null>(null);
@@ -57,11 +57,13 @@ const Dashboard = () => {
     startTime: '00:00',
     endTime: toHHMM(new Date()),
     trendPeriod: '15m',
+    datePreset: 'today' as 'today' | '7d' | '14d' | '30d',
   });
 
   const isDirty =
-    startTime !== applied.startTime ||
-    endTime   !== applied.endTime   ||
+    datePreset  !== applied.datePreset  ||
+    startTime   !== applied.startTime   ||
+    endTime     !== applied.endTime     ||
     trendPeriod !== applied.trendPeriod;
 
   const [exceededIntervals, setExceededIntervals] = useState<ExceededInterval[]>([]);
@@ -95,26 +97,38 @@ const Dashboard = () => {
   }, [t]);
 
   const fetchHistoricalData = useCallback(async () => {
-    // --- validation ---
-    const [sh, sm] = applied.startTime.split(':').map(Number);
-    const [eh, em] = applied.endTime.split(':').map(Number);
-    const startMinutes = sh * 60 + sm;
-    const endMinutes   = eh * 60 + em;
+    let startDate: Date;
+    let clampedEnd: Date;
 
-    if (endMinutes <= startMinutes) {
-      setTimeRangeError('Bitiş saati başlangıç saatinden sonra olmalıdır.');
-      return;
-    }
-    if (endMinutes - startMinutes < 5) {
-      setTimeRangeError('Aralık en az 5 dakika olmalıdır.');
-      return;
-    }
-    setTimeRangeError(null);
+    if (applied.datePreset === 'today') {
+      // --- validation ---
+      const [sh, sm] = applied.startTime.split(':').map(Number);
+      const [eh, em] = applied.endTime.split(':').map(Number);
+      const startMinutes = sh * 60 + sm;
+      const endMinutes   = eh * 60 + em;
 
-    const today = new Date();
-    const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), sh, sm, 0);
-    const endDate   = new Date(today.getFullYear(), today.getMonth(), today.getDate(), eh, em, 59);
-    const clampedEnd = endDate > today ? today : endDate;
+      if (endMinutes <= startMinutes) {
+        setTimeRangeError('Bitiş saati başlangıç saatinden sonra olmalıdır.');
+        return;
+      }
+      if (endMinutes - startMinutes < 5) {
+        setTimeRangeError('Aralık en az 5 dakika olmalıdır.');
+        return;
+      }
+      setTimeRangeError(null);
+
+      const today = new Date();
+      startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), sh, sm, 0);
+      const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), eh, em, 59);
+      clampedEnd = endDate > today ? today : endDate;
+    } else {
+      setTimeRangeError(null);
+      const days = applied.datePreset === '7d' ? 7 : applied.datePreset === '14d' ? 14 : 30;
+      const now = new Date();
+      clampedEnd = now;
+      startDate = subDays(now, days - 1);
+      startDate.setHours(0, 0, 0, 0);
+    }
 
     try {
       setHistLoading(true);
@@ -137,21 +151,23 @@ const Dashboard = () => {
   }, [applied, t]);
 
   const handleApply = () => {
-    const [sh, sm] = startTime.split(':').map(Number);
-    const [eh, em] = endTime.split(':').map(Number);
-    const startMinutes = sh * 60 + sm;
-    const endMinutes   = eh * 60 + em;
+    if (datePreset === 'today') {
+      const [sh, sm] = startTime.split(':').map(Number);
+      const [eh, em] = endTime.split(':').map(Number);
+      const startMinutes = sh * 60 + sm;
+      const endMinutes   = eh * 60 + em;
 
-    if (endMinutes <= startMinutes) {
-      setTimeRangeError('Bitiş saati başlangıç saatinden sonra olmalıdır.');
-      return;
+      if (endMinutes <= startMinutes) {
+        setTimeRangeError('Bitiş saati başlangıç saatinden sonra olmalıdır.');
+        return;
+      }
+      if (endMinutes - startMinutes < 5) {
+        setTimeRangeError('Aralık en az 5 dakika olmalıdır.');
+        return;
+      }
+      setTimeRangeError(null);
     }
-    if (endMinutes - startMinutes < 5) {
-      setTimeRangeError('Aralık en az 5 dakika olmalıdır.');
-      return;
-    }
-    setTimeRangeError(null);
-    setApplied({ startTime, endTime, trendPeriod });
+    setApplied({ startTime, endTime, trendPeriod, datePreset });
   };
 
   useEffect(() => {
@@ -169,13 +185,22 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    const [sh, sm] = applied.startTime.split(':').map(Number);
-    const [eh, em] = applied.endTime.split(':').map(Number);
-    const today = new Date();
-    const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), sh, sm, 0);
-    const endDate   = new Date(today.getFullYear(), today.getMonth(), today.getDate(), eh, em, 59);
-    const clampedEnd = endDate > today ? today : endDate;
-    sensorApi.getExceededIntervals(startDate.toISOString(), clampedEnd.toISOString())
+    let startDate: Date;
+    let endDate: Date;
+    if (applied.datePreset === 'today') {
+      const [sh, sm] = applied.startTime.split(':').map(Number);
+      const [eh, em] = applied.endTime.split(':').map(Number);
+      const today = new Date();
+      startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), sh, sm, 0);
+      const endD = new Date(today.getFullYear(), today.getMonth(), today.getDate(), eh, em, 59);
+      endDate = endD > today ? today : endD;
+    } else {
+      const days = applied.datePreset === '7d' ? 7 : applied.datePreset === '14d' ? 14 : 30;
+      endDate = new Date();
+      startDate = subDays(endDate, days - 1);
+      startDate.setHours(0, 0, 0, 0);
+    }
+    sensorApi.getExceededIntervals(startDate.toISOString(), endDate.toISOString())
       .then(setExceededIntervals)
       .catch(() => setExceededIntervals([]));
   }, [isAuthenticated, applied]);
@@ -298,28 +323,49 @@ const Dashboard = () => {
             <div className="flex items-center justify-between flex-wrap gap-2">
               <h2 className="card-title text-lg">{t('trend.title')}</h2>
               <div className="flex flex-wrap items-center gap-2">
-                {/* Time range inputs */}
-                <div className="flex items-center gap-1">
-                  <input
-                    type="time"
-                    value={startTime}
-                    onChange={e => setStartTime(e.target.value)}
-                    className={`input input-bordered input-xs w-28 ${
-                      timeRangeError ? 'input-error' : ''
-                    }`}
-                    disabled={histLoading}
-                  />
-                  <span className="text-base-content/60 text-xs">—</span>
-                  <input
-                    type="time"
-                    value={endTime}
-                    onChange={e => setEndTime(e.target.value)}
-                    className={`input input-bordered input-xs w-28 ${
-                      timeRangeError ? 'input-error' : ''
-                    }`}
-                    disabled={histLoading}
-                  />
+                {/* Date preset */}
+                <div className="join">
+                  {(['today', '7d', '14d', '30d'] as const).map(p => (
+                    <button
+                      key={p}
+                      className={`join-item btn btn-xs ${
+                        datePreset === p ? 'btn-primary' : 'btn-outline'
+                      }`}
+                      onClick={() => setDatePreset(p)}
+                      disabled={histLoading}
+                    >
+                      {p === 'today'
+                        ? t('trend.today', 'Bugün')
+                        : p === '7d' ? t('analyticsPage.last7Days')
+                        : p === '14d' ? t('analyticsPage.last14Days')
+                        : t('analyticsPage.last30Days')}
+                    </button>
+                  ))}
                 </div>
+                {/* Time range inputs - only for today */}
+                {datePreset === 'today' && (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="time"
+                      value={startTime}
+                      onChange={e => setStartTime(e.target.value)}
+                      className={`input input-bordered input-xs w-28 ${
+                        timeRangeError ? 'input-error' : ''
+                      }`}
+                      disabled={histLoading}
+                    />
+                    <span className="text-base-content/60 text-xs">—</span>
+                    <input
+                      type="time"
+                      value={endTime}
+                      onChange={e => setEndTime(e.target.value)}
+                      className={`input input-bordered input-xs w-28 ${
+                        timeRangeError ? 'input-error' : ''
+                      }`}
+                      disabled={histLoading}
+                    />
+                  </div>
+                )}
                 {/* Bucket period */}
                 <div className="join">
                   {TREND_PERIODS.map(p => (
@@ -335,23 +381,25 @@ const Dashboard = () => {
                     </button>
                   ))}
                 </div>
-                <button
-                  className="btn btn-primary btn-xs"
-                  onClick={handleApply}
-                  disabled={histLoading || !isDirty}
-                >
-                  {histLoading
-                    ? <RefreshCw className="w-3 h-3 animate-spin" />
-                    : t('trend.apply')}
-                </button>
-                <button
-                  className="btn btn-ghost btn-xs"
-                  onClick={fetchHistoricalData}
-                  disabled={histLoading}
-                  title="Yenile"
-                >
-                  <RefreshCw className={`w-4 h-4 ${histLoading ? 'animate-spin' : ''}`} />
-                </button>
+                <div className="flex items-center gap-1 flex-nowrap">
+                  <button
+                    className="btn btn-primary btn-xs"
+                    onClick={handleApply}
+                    disabled={histLoading || !isDirty}
+                  >
+                    {histLoading
+                      ? <RefreshCw className="w-3 h-3 animate-spin" />
+                      : t('trend.apply')}
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-xs"
+                    onClick={fetchHistoricalData}
+                    disabled={histLoading}
+                    title="Yenile"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${histLoading ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
               </div>
             </div>
             {timeRangeError && (
@@ -423,49 +471,54 @@ const Dashboard = () => {
             <div className="mt-2 text-sm text-center text-gray-500">
               {t('trend.legendHelp')}
             </div>
-
-            {isAuthenticated && (
-              <div className="mt-3 border-t border-base-300 pt-3">
-                <p className="text-xs font-semibold uppercase tracking-wide opacity-60 mb-2">
-                  {t('threshold.exceededIntervals')}
-                </p>
-                {exceededIntervals.length === 0 ? (
-                  <p className="text-xs opacity-40">{t('threshold.noExceededIntervals')}</p>
-                ) : (
-                  <ul className="space-y-1 max-h-44 overflow-y-auto pr-1">
-                    {exceededIntervals.map((iv, i) => (
-                      <li
-                        key={i}
-                        onMouseEnter={() => setHoveredInterval(iv)}
-                        onMouseLeave={() => setHoveredInterval(null)}
-                        className={`flex items-center gap-3 text-xs px-2 py-1.5 rounded cursor-pointer select-none transition-colors ${
-                          hoveredInterval === iv
-                            ? 'bg-error/20 ring-1 ring-error/30'
-                            : 'hover:bg-base-300'
-                        }`}
-                      >
-                        <span className="font-bold uppercase w-10 shrink-0 text-error">
-                          {METRIC_LABELS[iv.metric] ?? iv.metric}
-                        </span>
-                        <span className="opacity-70 shrink-0">
-                          {fmtTime(iv.start)} – {fmtTime(iv.end)}
-                        </span>
-                        <span className="ml-auto font-mono text-error shrink-0">
-                          ↑{iv.max_value}
-                        </span>
-                        <span className="opacity-50 shrink-0">
-                          {iv.duration_minutes}{t('threshold.minSuffix')}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
           </div>
         </div>
 
-        <AIPredictions historicalData={historicalData as any[]} />
+        {isAuthenticated && (
+          <div className="card bg-base-100 shadow-xl">
+            <div className="card-body">
+              <h2 className="card-title text-lg">{t('threshold.exceededIntervals')}</h2>
+              {exceededIntervals.filter(iv => visibleMetrics[iv.metric]).length === 0 ? (
+                <p className="text-sm opacity-40">{t('threshold.noExceededIntervals')}</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {metrics.filter(m => visibleMetrics[m.id]).map(m => {
+                    const intervals = exceededIntervals.filter(iv => iv.metric === m.id);
+                    return (
+                      <div key={m.id}>
+                        <p className="text-xs font-bold uppercase mb-1" style={{ color: m.color }}>{m.name}</p>
+                        {intervals.length === 0 ? (
+                          <p className="text-xs opacity-40">{t('threshold.noExceededIntervals')}</p>
+                        ) : (
+                          <ul className="space-y-1 max-h-52 overflow-y-auto pr-1">
+                            {intervals.map((iv, i) => (
+                              <li
+                                key={i}
+                                onMouseEnter={() => setHoveredInterval(iv)}
+                                onMouseLeave={() => setHoveredInterval(null)}
+                                className={`text-xs px-2 py-1 rounded cursor-pointer select-none transition-colors ${
+                                  hoveredInterval === iv
+                                    ? 'bg-error/20 ring-1 ring-error/30'
+                                    : 'hover:bg-base-300'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="opacity-70 truncate">{fmtTime(iv.start)} – {fmtTime(iv.end)}</span>
+                                  <span className="font-mono text-error shrink-0">↑{iv.max_value}</span>
+                                </div>
+                                <span className="opacity-50">{iv.duration_minutes}{t('threshold.minSuffix')}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

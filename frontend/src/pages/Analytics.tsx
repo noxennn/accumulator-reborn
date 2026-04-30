@@ -149,7 +149,7 @@ const Analytics = () => {
     sensorApi.getExceededIntervals(start, end)
       .then(setExceededIntervals)
       .catch(() => setExceededIntervals([]));
-  }, [data, loading]);
+  }, [data, loading, getDateRange]);
 
   // ── İstatistik çek ───────────────────────────────────────────────
   useEffect(() => {
@@ -496,44 +496,58 @@ const Analytics = () => {
       {authApi.isAuthenticated() && (
         <div className="card bg-base-100 shadow-xl">
           <div className="card-body py-4">
-            <h2 className="card-title text-base mb-2">{t('threshold.exceededIntervals')}</h2>
-            {exceededIntervals.length === 0 ? (
+            <h2 className="card-title text-base mb-3">{t('threshold.exceededIntervals')}</h2>
+            {exceededIntervals.filter(iv => selectedMetrics.includes(iv.metric)).length === 0 ? (
               <p className="text-sm opacity-40">{t('threshold.noExceededIntervals')}</p>
             ) : (
-              <ul className="space-y-1 max-h-52 overflow-y-auto pr-1">
-                {exceededIntervals.map((iv, i) => (
-                  <li
-                    key={i}
-                    onMouseEnter={() => setHoveredInterval(iv)}
-                    onMouseLeave={() => setHoveredInterval(null)}
-                    onClick={() => {
-                      setSelectedInterval(prev => prev === iv ? null : iv);
-                      chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }}
-                    className={`flex items-center gap-3 text-xs px-2 py-1.5 rounded cursor-pointer select-none transition-colors ${
-                      selectedInterval === iv
-                        ? 'bg-error/20 ring-1 ring-error/40'
-                        : hoveredInterval === iv
-                        ? 'bg-error/10'
-                        : 'hover:bg-base-300'
-                    }`}
-                  >
-                    <span className="font-bold uppercase w-12 shrink-0 text-error">
-                      {METRIC_LABELS[iv.metric] ?? iv.metric}
-                    </span>
-                    <span className="opacity-70 shrink-0">
-                      {new Date(iv.start).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                      {' – '}
-                      {new Date(iv.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span className="ml-auto font-mono text-error shrink-0">↑{iv.max_value}</span>
-                    <span className="opacity-50 shrink-0">{iv.duration_minutes}{t('threshold.minSuffix')}</span>
-                    {selectedInterval === iv && (
-                      <span className="badge badge-error badge-xs ml-1">{t('threshold.focused')}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {metrics.filter(m => selectedMetrics.includes(m.id)).map(m => {
+                  const intervals = exceededIntervals.filter(iv => iv.metric === m.id);
+                  return (
+                    <div key={m.id}>
+                      <p className="text-xs font-bold uppercase mb-1.5" style={{ color: m.color }}>{m.name}</p>
+                      {intervals.length === 0 ? (
+                        <p className="text-xs opacity-40">{t('threshold.noExceededIntervals')}</p>
+                      ) : (
+                        <ul className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                          {intervals.map((iv, i) => (
+                            <li
+                              key={i}
+                              onMouseEnter={() => setHoveredInterval(iv)}
+                              onMouseLeave={() => setHoveredInterval(null)}
+                              onClick={() => {
+                                setSelectedInterval(prev => prev === iv ? null : iv);
+                                chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }}
+                              className={`text-xs px-2 py-1.5 rounded cursor-pointer select-none transition-colors ${
+                                selectedInterval === iv
+                                  ? 'bg-error/20 ring-1 ring-error/40'
+                                  : hoveredInterval === iv
+                                  ? 'bg-error/10'
+                                  : 'hover:bg-base-300'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="opacity-70 truncate">
+                                  {new Date(iv.start).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                <span className="font-mono text-error shrink-0">↑{iv.max_value}</span>
+                              </div>
+                              <div className="flex items-center justify-between gap-1 opacity-60">
+                                <span>{new Date(iv.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                <span>{iv.duration_minutes}{t('threshold.minSuffix')}</span>
+                              </div>
+                              {selectedInterval === iv && (
+                                <span className="badge badge-error badge-xs mt-0.5">{t('threshold.focused')}</span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
