@@ -87,6 +87,7 @@
     "critical": "Danger! Air quality is at critical levels."
   },
   "analyticsPage": {
+    "dataPointsHint": "{{count}} data points · each point is the average for the selected period",
     "last7Days": "Last 7 Days",
     "last14Days": "Last 14 Days",
     "last30Days": "Last 30 Days",
@@ -122,6 +123,13 @@
       "poor": "Poor",
       "veryPoor": "Very Poor",
       "hazardous": "Hazardous"
+    },
+    "description": {
+      "good": "Air quality is satisfactory and poses little or no risk.",
+      "moderate": "Air quality is acceptable; some pollutants may be a concern for sensitive individuals.",
+      "poor": "Members of sensitive groups may experience health effects.",
+      "veryPoor": "Everyone may begin to experience health effects.",
+      "hazardous": "Health alert: everyone may experience serious health effects."
     }
   },
   "trend": {

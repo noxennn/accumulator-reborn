@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -89,8 +89,14 @@ const Analytics = () => {
 
   // Threshold exceedance intervals
   const [exceededIntervals, setExceededIntervals] = useState<ExceededInterval[]>([]);
+  const [exceededLoading, setExceededLoading] = useState(true);
   const [hoveredInterval, setHoveredInterval] = useState<ExceededInterval | null>(null);
   const [selectedInterval, setSelectedInterval] = useState<ExceededInterval | null>(null);
+
+  const filteredExceededIntervals = useMemo(
+    () => exceededIntervals.filter(iv => iv.duration_minutes >= 5),
+    [exceededIntervals]
+  );
 
   const metrics = [
     { id: 'co2',  name: t('sensors.co2'),  color: '#8884d8', unit: t('units.co2') },
@@ -119,6 +125,7 @@ const Analytics = () => {
   // ── Veri çek ─────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setExceededLoading(true);
     setError(null);
     try {
       const { start, end } = getDateRange();
@@ -146,9 +153,11 @@ const Analytics = () => {
     const { start, end } = getDateRange();
     setSelectedInterval(null);
     setHoveredInterval(null);
+    setExceededLoading(true);
     sensorApi.getExceededIntervals(start, end)
       .then(setExceededIntervals)
-      .catch(() => setExceededIntervals([]));
+      .catch(() => setExceededIntervals([]))
+      .finally(() => setExceededLoading(false));
   }, [data, loading, getDateRange]);
 
   // ── İstatistik çek ───────────────────────────────────────────────
@@ -238,19 +247,36 @@ const Analytics = () => {
 
   // ── Grafik render ────────────────────────────────────────────────
 
+  const activeInterval = hoveredInterval ?? selectedInterval;
+
+  // Aralık seçilince grafik penceresini yaklaştır
+  const displayData = useMemo(() => {
+    if (!activeInterval || !data.length) return data;
+    const ivStart = new Date(activeInterval.start).getTime();
+    const ivEnd   = new Date(activeInterval.end).getTime();
+    const durationMs = Math.max(ivEnd - ivStart, 60_000); // en az 1dk
+    // Kısa aralıklarda daha görünür zoom için pad'i kontrollü tut.
+    const padMs = Math.max(durationMs * 2, 5 * 60 * 1000);
+    const winStart = ivStart - padMs;
+    const winEnd   = ivEnd   + padMs;
+    const filtered = data.filter(p => {
+      const t = new Date(p.timestamp).getTime();
+      return t >= winStart && t <= winEnd;
+    });
+    return filtered.length >= 1 ? filtered : data;
+  }, [activeInterval, data]);
+
   const findClosestTimestamp = (isoTs: string): string | null => {
-    if (!data.length) return null;
+    if (!displayData.length) return null;
     const target = new Date(isoTs).getTime();
-    let best = data[0];
+    let best = displayData[0];
     let bestDiff = Math.abs(new Date(best.timestamp).getTime() - target);
-    for (const p of data) {
+    for (const p of displayData) {
       const diff = Math.abs(new Date(p.timestamp).getTime() - target);
       if (diff < bestDiff) { bestDiff = diff; best = p; }
     }
     return best.timestamp ?? null;
   };
-
-  const activeInterval = hoveredInterval ?? selectedInterval;
 
   const renderChart = () => {
     const ChartComp = { line: LineChart, area: AreaChart, composed: ComposedChart }[chartType];
@@ -271,7 +297,7 @@ const Analytics = () => {
 
     return (
       <ResponsiveContainer width="100%" height="100%">
-        <ChartComp data={data}>
+        <ChartComp data={displayData}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis
             dataKey="timestamp"
@@ -486,7 +512,7 @@ const Analytics = () => {
           </div>
           {data.length > 0 && (
             <p className="text-xs opacity-50 text-right">
-              {data.length} veri noktası · her nokta seçilen periyodun ortalaması
+              {t('analyticsPage.dataPointsHint', { count: data.length })}
             </p>
           )}
         </div>
@@ -497,12 +523,18 @@ const Analytics = () => {
         <div className="card bg-base-100 shadow-xl">
           <div className="card-body py-4">
             <h2 className="card-title text-base mb-3">{t('threshold.exceededIntervals')}</h2>
-            {exceededIntervals.filter(iv => selectedMetrics.includes(iv.metric)).length === 0 ? (
+            {exceededLoading ? (
+              <div className="flex justify-center items-center py-6">
+                <span className="loading loading-spinner loading-md opacity-50"></span>
+              </div>
+            ) : filteredExceededIntervals.filter(iv => selectedMetrics.includes(iv.metric)).length === 0 ? (
               <p className="text-sm opacity-40">{t('threshold.noExceededIntervals')}</p>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {metrics.filter(m => selectedMetrics.includes(m.id)).map(m => {
-                  const intervals = exceededIntervals.filter(iv => iv.metric === m.id);
+                  const intervals = filteredExceededIntervals
+                    .filter(iv => iv.metric === m.id)
+                    .sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
                   return (
                     <div key={m.id}>
                       <p className="text-xs font-bold uppercase mb-1.5" style={{ color: m.color }}>{m.name}</p>
@@ -529,12 +561,12 @@ const Analytics = () => {
                             >
                               <div className="flex items-center justify-between gap-1">
                                 <span className="opacity-70 truncate">
-                                  {new Date(iv.start).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                  {new Date(iv.start).toLocaleString(i18n.language, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                 </span>
                                 <span className="font-mono text-error shrink-0">↑{iv.max_value}</span>
                               </div>
                               <div className="flex items-center justify-between gap-1 opacity-60">
-                                <span>{new Date(iv.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                <span>{new Date(iv.end).toLocaleString(i18n.language, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                                 <span>{iv.duration_minutes}{t('threshold.minSuffix')}</span>
                               </div>
                               {selectedInterval === iv && (

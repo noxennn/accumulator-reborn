@@ -87,6 +87,7 @@
     "critical": "Tehlike! Hava kalitesi kritik seviyede."
   },
   "analyticsPage": {
+    "dataPointsHint": "{{count}} veri noktası · her nokta seçilen periyodun ortalaması",
     "last7Days": "Son 7 Gün",
     "last14Days": "Son 14 Gün",
     "last30Days": "Son 30 Gün",
@@ -122,6 +123,13 @@
       "poor": "Kötü",
       "veryPoor": "Çok Kötü",
       "hazardous": "Tehlikeli"
+    },
+    "description": {
+      "good": "Hava kalitesi tatmin edici düzeyde, herhangi bir risk oluşturmuyor.",
+      "moderate": "Hava kalitesi kabul edilebilir; hassas bireyler için bazı kirleticiler endişe verici olabilir.",
+      "poor": "Hassas gruplar sağlık etkileri yaşayabilir.",
+      "veryPoor": "Herkes sağlık etkileri yaşamaya başlayabilir.",
+      "hazardous": "Sağlık uyarısı: Herkes ciddi sağlık etkileriyle karşılaşabilir."
     }
   },
   "trend": {

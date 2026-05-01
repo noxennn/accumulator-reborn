@@ -15,6 +15,15 @@ import { useWebSocketData } from '../hooks/useWebSocketData';
 const PERIODS = [1, 5, 15, 30, 60] as const;
 type Period = (typeof PERIODS)[number];
 
+function formatInvalidField(field: string): string {
+  const key = field.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (key === 'co2') return 'CO₂';
+  if (key === 'voc' || key === 'tvoc') return 'VOC';
+  if (key === 'pm25' || key === 'pm2p5') return 'PM2.5';
+  if (key === 'pm10') return 'PM10';
+  return field;
+}
+
 function getStatusClass(status?: 'green' | 'yellow' | 'red'): string {
   if (status === 'red')    return 'text-error font-medium';
   if (status === 'yellow') return 'text-warning font-medium';
@@ -34,6 +43,7 @@ export default function Watch() {
   const { dataBuffer, logsBuffer, invalidBuffer, isConnected, error } = useWebSocketData();
   const [period, setPeriod] = useState<Period>(60);
   const [highlightedTimestamp, setHighlightedTimestamp] = useState<string | null>(null);
+  const [hoveredTimestamp, setHoveredTimestamp] = useState<string | null>(null);
   const [chartPulse, setChartPulse] = useState(false);
   const lastSeenTimestampRef = useRef<string | null>(null);
 
@@ -175,8 +185,14 @@ export default function Watch() {
                   allData.map((p, i) => (
                     <tr
                       key={p.timestamp + i}
+                      onMouseEnter={() => setHoveredTimestamp(p.timestamp)}
+                      onMouseLeave={() => setHoveredTimestamp(null)}
                       className={`transition-all duration-700 ${
                         i === 0 ? 'font-semibold' : ''
+                      } ${
+                        p.timestamp === hoveredTimestamp
+                          ? 'relative z-10 bg-base-100/90 shadow-[0_10px_24px_-12px_rgba(99,102,241,0.45)]'
+                          : ''
                       } ${
                         p.timestamp === highlightedTimestamp
                           ? 'bg-primary/15 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
@@ -274,7 +290,12 @@ export default function Watch() {
                     type="monotone"
                     dataKey={key}
                     stroke={color}
-                    dot={false}
+                    dot={(props: any) => {
+                      const { cx, cy, payload } = props;
+                      if (!hoveredTimestamp || payload?.timestamp !== hoveredTimestamp) return <g />;
+                      if (typeof cx !== 'number' || typeof cy !== 'number') return <g />;
+                      return <circle cx={cx} cy={cy} r={5} fill="#ffffff" stroke={color} strokeWidth={2} />;
+                    }}
                     strokeWidth={2}
                     isAnimationActive={chartAnimationEnabled}
                     animationDuration={chartAnimationEnabled ? 550 : 0}
@@ -338,7 +359,13 @@ export default function Watch() {
                   </tr>
                 </thead>
                 <tbody>
-                  {invalidBuffer.length === 0 ? (
+                  {!isConnected && invalidBuffer.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="text-center py-4">
+                        <span className="loading loading-spinner loading-sm opacity-50"></span>
+                      </td>
+                    </tr>
+                  ) : invalidBuffer.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="text-center opacity-50 py-4">
                         {t('watch.invalidEmpty')}
@@ -350,7 +377,7 @@ export default function Watch() {
                         <td className="font-mono text-xs whitespace-nowrap">
                           {format(new Date(entry.timestamp), 'HH:mm:ss')}
                         </td>
-                        <td className="text-xs font-mono">{entry.field}</td>
+                        <td className="text-xs font-mono">{formatInvalidField(entry.field)}</td>
                         <td className="text-xs font-mono">{entry.value}</td>
                         <td className="text-xs break-all">{entry.reason}</td>
                       </tr>
