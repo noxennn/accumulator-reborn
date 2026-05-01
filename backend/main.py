@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, Depends, Query, WebSocket, WebSocket
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta, timezone
 import joblib
 import auth
@@ -54,6 +54,7 @@ class ConnectionManager:
         self.recent_data:    deque[dict] = deque(maxlen=50)
         self.recent_logs:    deque[dict] = deque(maxlen=50)
         self.recent_invalid: deque[dict] = deque(maxlen=50)
+        self.recent_events:  deque[dict] = deque(maxlen=50)
 
     async def connect(self, websocket: WebSocket, thresholds: Optional[dict] = None):
         await websocket.accept()
@@ -65,6 +66,8 @@ class ConnectionManager:
             for entry in self.recent_logs:
                 await websocket.send_json(entry)
             for entry in self.recent_invalid:
+                await websocket.send_json(entry)
+            for entry in self.recent_events:
                 await websocket.send_json(entry)
         except Exception:
             self.disconnect(websocket)
@@ -80,6 +83,9 @@ class ConnectionManager:
 
     def push_invalid(self, entry: dict):
         self.recent_invalid.append(entry)
+
+    def push_event(self, entry: dict):
+        self.recent_events.append(entry)
 
     @staticmethod
     def _enrich(payload: dict, thresholds: Optional[dict]) -> dict:
@@ -112,6 +118,115 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+
+def _normalize_invalid_field(field: str) -> str:
+    key = (field or '').strip().lower()
+    if key in {'co2'}:
+        return 'co2'
+    if key in {'voc', 'tvoc'}:
+        return 'voc'
+    if key in {'pm25', 'pm2.5', 'pm2p5'}:
+        return 'pm25'
+    if key in {'pm10'}:
+        return 'pm10'
+    if key in {'missing'}:
+        return 'missing'
+    return 'other'
+
+
+def _utc_iso(dt: datetime) -> str:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
+def _floor_bucket(dt: datetime, granularity: str) -> datetime:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    if granularity == 'hour':
+        return dt.replace(minute=0, second=0, microsecond=0)
+    return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _build_watch_series(
+    db: Session,
+    *,
+    start: datetime,
+    end: datetime,
+    granularity: str,
+) -> schemas.WatchPeriodSeries:
+    current = _floor_bucket(start, granularity)
+    end_bucket = _floor_bucket(end, granularity)
+
+    buckets: Dict[datetime, Dict[str, Any]] = {}
+    while current <= end_bucket:
+        buckets[current] = {
+            'log_count': 0,
+            'invalid_count': 0,
+            'restart_warning_count': 0,
+            'invalid_by_field': {
+                'co2': 0,
+                'voc': 0,
+                'pm25': 0,
+                'pm10': 0,
+                'missing': 0,
+                'other': 0,
+            },
+        }
+        if granularity == 'hour':
+            current += timedelta(hours=1)
+        else:
+            current += timedelta(days=1)
+
+    log_rows = (
+        db.query(models.ArduinoLog.timestamp)
+        .filter(models.ArduinoLog.timestamp.between(start, end))
+        .all()
+    )
+    for row in log_rows:
+        bucket = _floor_bucket(row.timestamp, granularity)
+        if bucket in buckets:
+            buckets[bucket]['log_count'] += 1
+
+    invalid_rows = (
+        db.query(models.InvalidDataRecord.timestamp, models.InvalidDataRecord.field)
+        .filter(models.InvalidDataRecord.timestamp.between(start, end))
+        .all()
+    )
+    for row in invalid_rows:
+        bucket = _floor_bucket(row.timestamp, granularity)
+        if bucket not in buckets:
+            continue
+        buckets[bucket]['invalid_count'] += 1
+        norm_field = _normalize_invalid_field(row.field)
+        buckets[bucket]['invalid_by_field'][norm_field] += 1
+
+    event_rows = (
+        db.query(models.DeviceEvent.timestamp, models.DeviceEvent.event_type)
+        .filter(models.DeviceEvent.timestamp.between(start, end))
+        .filter(models.DeviceEvent.event_type == 'restart_warning')
+        .all()
+    )
+    for row in event_rows:
+        bucket = _floor_bucket(row.timestamp, granularity)
+        if bucket in buckets:
+            buckets[bucket]['restart_warning_count'] += 1
+
+    points: list[schemas.WatchSeriesPoint] = []
+    for bucket_start in sorted(buckets.keys()):
+        agg = buckets[bucket_start]
+        points.append(
+            schemas.WatchSeriesPoint(
+                bucket_start=bucket_start,
+                log_count=agg['log_count'],
+                invalid_count=agg['invalid_count'],
+                restart_warning_count=agg['restart_warning_count'],
+                invalid_by_field=schemas.InvalidByField(**agg['invalid_by_field']),
+            )
+        )
+
+    return schemas.WatchPeriodSeries(granularity=granularity, points=points)
 
 
 async def check_and_alert(co2: float, voc: float, pm25: float, pm10: float, now_utc: datetime):
@@ -187,6 +302,32 @@ async def websocket_endpoint(websocket: WebSocket):
             message = await websocket.receive_text()
             try:
                 data = json.loads(message)
+
+                if data.get('type') == 'event':
+                    now_utc = datetime.now(timezone.utc)
+                    event_type = str(data.get('event_type') or 'unknown')
+                    source = str(data.get('source') or 'arduino')
+                    reason = data.get('reason')
+                    event_payload = {
+                        'type': 'event',
+                        'timestamp': _utc_iso(now_utc),
+                        'event_type': event_type,
+                        'source': source,
+                        'reason': reason,
+                        'payload': data,
+                    }
+                    db.add(models.DeviceEvent(
+                        timestamp=now_utc,
+                        event_type=event_type,
+                        source=source,
+                        reason=reason,
+                        payload=data,
+                    ))
+                    db.commit()
+                    manager.push_event(event_payload)
+                    asyncio.create_task(manager.broadcast(event_payload))
+                    continue
+
                 co2  = data.get("co2")
                 voc  = data.get("voc")
                 pm25 = data.get("pm25")
@@ -205,6 +346,17 @@ async def websocket_endpoint(websocket: WebSocket):
                         "co2": co2 or 0, "voc": voc or 0, "pm25": pm25 or 0, "pm10": pm10 or 0,
                     }
                     manager.push_invalid(inv)
+                    db.add(models.InvalidDataRecord(
+                        timestamp=now_utc,
+                        field='missing',
+                        value=0,
+                        reason=reason,
+                        co2=co2 or 0,
+                        voc=voc or 0,
+                        pm25=pm25 or 0,
+                        pm10=pm10 or 0,
+                    ))
+                    db.commit()
                     asyncio.create_task(manager.broadcast(inv))
                     continue
 
@@ -223,6 +375,17 @@ async def websocket_endpoint(websocket: WebSocket):
                         "co2": co2, "voc": voc, "pm25": pm25, "pm10": pm10,
                     }
                     manager.push_invalid(inv)
+                    db.add(models.InvalidDataRecord(
+                        timestamp=now_utc,
+                        field='co2',
+                        value=float(co2),
+                        reason=reason,
+                        co2=float(co2),
+                        voc=float(voc),
+                        pm25=float(pm25),
+                        pm10=float(pm10),
+                    ))
+                    db.commit()
                     asyncio.create_task(manager.broadcast(inv))
                     continue
                 if not (0 <= voc <= 1187):
@@ -238,6 +401,17 @@ async def websocket_endpoint(websocket: WebSocket):
                         "co2": co2, "voc": voc, "pm25": pm25, "pm10": pm10,
                     }
                     manager.push_invalid(inv)
+                    db.add(models.InvalidDataRecord(
+                        timestamp=now_utc,
+                        field='voc',
+                        value=float(voc),
+                        reason=reason,
+                        co2=float(co2),
+                        voc=float(voc),
+                        pm25=float(pm25),
+                        pm10=float(pm10),
+                    ))
+                    db.commit()
                     asyncio.create_task(manager.broadcast(inv))
                     continue
                 if not (0 <= pm25 <= 1000):
@@ -253,6 +427,17 @@ async def websocket_endpoint(websocket: WebSocket):
                         "co2": co2, "voc": voc, "pm25": pm25, "pm10": pm10,
                     }
                     manager.push_invalid(inv)
+                    db.add(models.InvalidDataRecord(
+                        timestamp=now_utc,
+                        field='pm25',
+                        value=float(pm25),
+                        reason=reason,
+                        co2=float(co2),
+                        voc=float(voc),
+                        pm25=float(pm25),
+                        pm10=float(pm10),
+                    ))
+                    db.commit()
                     asyncio.create_task(manager.broadcast(inv))
                     continue
                 if not (0 <= pm10 <= 1000):
@@ -268,6 +453,17 @@ async def websocket_endpoint(websocket: WebSocket):
                         "co2": co2, "voc": voc, "pm25": pm25, "pm10": pm10,
                     }
                     manager.push_invalid(inv)
+                    db.add(models.InvalidDataRecord(
+                        timestamp=now_utc,
+                        field='pm10',
+                        value=float(pm10),
+                        reason=reason,
+                        co2=float(co2),
+                        voc=float(voc),
+                        pm25=float(pm25),
+                        pm10=float(pm10),
+                    ))
+                    db.commit()
                     asyncio.create_task(manager.broadcast(inv))
                     continue
 
@@ -295,11 +491,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 now_utc = datetime.now(timezone.utc)
                 log_entry = {
                     "type": "log",
-                    "timestamp": now_utc.isoformat(),
+                    "timestamp": _utc_iso(now_utc),
                     "message": message,
                 }
                 logger.warning(f"Raw (non-JSON) data: {message}")
                 manager.push_log(log_entry)
+                db.add(models.ArduinoLog(timestamp=now_utc, message=message))
+                db.commit()
                 asyncio.create_task(manager.broadcast(log_entry))
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: {websocket.client}")
@@ -345,13 +543,32 @@ async def live_feed_endpoint(websocket: WebSocket, token: Optional[str] = Query(
 async def get_data(
     start: Optional[datetime] = Query(None),
     end: Optional[datetime] = Query(None),
-    limit: int = Query(default=500, le=5000),
+    limit: int = Query(default=500, ge=1, le=5000),
+    chronological: bool = Query(default=True),
     db: Session = Depends(get_db)
 ):
     query = db.query(models.ArduinoData).order_by(models.ArduinoData.timestamp.desc())
     if start and end:
         query = query.filter(models.ArduinoData.timestamp.between(start, end))
-    return query.limit(limit).all()
+    rows = query.limit(limit).all()
+    if chronological:
+        rows.reverse()
+    return rows
+
+
+@app.get(f"{api_prefix}/watch/period-series", response_model=schemas.WatchPeriodSeriesResponse)
+async def get_watch_period_series(db: Session = Depends(get_db)):
+    now = datetime.now(timezone.utc)
+
+    day_start = now - timedelta(days=1)
+    week_start = now - timedelta(days=7)
+    month_start = now - timedelta(days=30)
+
+    day = _build_watch_series(db, start=day_start, end=now, granularity='hour')
+    week = _build_watch_series(db, start=week_start, end=now, granularity='day')
+    month = _build_watch_series(db, start=month_start, end=now, granularity='day')
+
+    return schemas.WatchPeriodSeriesResponse(day=day, week=week, month=month)
 
 
 @app.get(f"{api_prefix}/sensors/aggregated")

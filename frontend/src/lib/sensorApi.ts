@@ -3,6 +3,37 @@ import { fetchWithAuth } from './api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+export interface HistoryQueryOptions {
+  limit?: number;
+  chronological?: boolean;
+}
+
+export interface WatchSeriesPoint {
+  bucket_start: string;
+  log_count: number;
+  invalid_count: number;
+  restart_warning_count: number;
+  invalid_by_field: {
+    co2: number;
+    voc: number;
+    pm25: number;
+    pm10: number;
+    missing: number;
+    other: number;
+  };
+}
+
+export interface WatchPeriodSeries {
+  granularity: string;
+  points: WatchSeriesPoint[];
+}
+
+export interface WatchPeriodSeriesResponse {
+  day: WatchPeriodSeries;
+  week: WatchPeriodSeries;
+  month: WatchPeriodSeries;
+}
+
 export const sensorApi = {
   // Get current sensor data
   async getCurrentData() {
@@ -16,12 +47,23 @@ export const sensorApi = {
   },
 
   // Get historical sensor data with optional date range
-  async getHistoricalData(start?: string, end?: string) {
+  async getHistoricalData(start?: string, end?: string, options?: HistoryQueryOptions) {
     let url = `${API_URL}/air/sensors/history`;
-    
-    // Add date range parameters if provided
+
+    const params = new URLSearchParams();
     if (start && end) {
-      url += `?start=${start}&end=${end}`;
+      params.set('start', start);
+      params.set('end', end);
+    }
+    if (options?.limit) {
+      params.set('limit', String(options.limit));
+    }
+    if (typeof options?.chronological === 'boolean') {
+      params.set('chronological', String(options.chronological));
+    }
+    const qs = params.toString();
+    if (qs) {
+      url += `?${qs}`;
     }
     
     const response = await fetchWithAuth(url);
@@ -66,6 +108,14 @@ export const sensorApi = {
       throw new Error(`Failed to fetch stats for ${metricId}`);
     }
     
+    return response.json();
+  },
+
+  async getWatchPeriodSeries(): Promise<WatchPeriodSeriesResponse> {
+    const response = await fetchWithAuth(`${API_URL}/air/watch/period-series`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch watch period series');
+    }
     return response.json();
   }
 };

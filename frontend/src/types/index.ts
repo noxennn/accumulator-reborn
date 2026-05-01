@@ -53,3 +53,31 @@ export interface Alert {
   timestamp: string;
   acknowledged?: boolean;
 }
+
+export interface InvalidByFieldCounts {
+  co2: number;
+  voc: number;
+  pm25: number;
+  pm10: number;
+  missing: number;
+  other: number;
+}
+
+export interface WatchSeriesPoint {
+  bucket_start: string;
+  log_count: number;
+  invalid_count: number;
+  restart_warning_count: number;
+  invalid_by_field: InvalidByFieldCounts;
+}
+
+export interface WatchPeriodSeries {
+  granularity: string;
+  points: WatchSeriesPoint[];
+}
+
+export interface WatchPeriodSeriesResponse {
+  day: WatchPeriodSeries;
+  week: WatchPeriodSeries;
+  month: WatchPeriodSeries;
+}

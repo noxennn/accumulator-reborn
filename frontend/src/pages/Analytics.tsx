@@ -52,8 +52,14 @@ const xLabel = (ts: string, period: string, locale: Locale): string => {
   try {
     const d = new Date(ts);
     if (PERIOD_MINUTES[period] >= 1440) return format(d, 'dd MMM', { locale });
-    if (PERIOD_MINUTES[period] >= 120)  return format(d, 'dd MMM HH:mm', { locale });
-    return format(d, 'HH:mm');
+    return format(d, 'dd MMM HH:mm', { locale });
+  } catch { return ts; }
+};
+
+// ── Tooltip üst satırı: her zaman tam tarih + saat ──────────────────
+const xTooltipLabel = (ts: string, locale: Locale): string => {
+  try {
+    return format(new Date(ts), 'dd MMM HH:mm:ss', { locale });
   } catch { return ts; }
 };
 
@@ -252,6 +258,7 @@ const Analytics = () => {
   // Aralık seçilince grafik penceresini yaklaştır
   const displayData = useMemo(() => {
     if (!activeInterval || !data.length) return data;
+    if (activeInterval.duration_minutes >= 10) return data;
     const ivStart = new Date(activeInterval.start).getTime();
     const ivEnd   = new Date(activeInterval.end).getTime();
     const durationMs = Math.max(ivEnd - ivStart, 60_000); // en az 1dk
@@ -309,7 +316,7 @@ const Analytics = () => {
           <YAxis stroke="#6b7280" tick={{ fill: '#6b7280' }} />
           <Tooltip
             formatter={tooltipFormatter}
-            labelFormatter={ts => xLabel(ts as string, period, dateLocale)}
+            labelFormatter={ts => xTooltipLabel(ts as string, dateLocale)}
             contentStyle={{
               backgroundColor: 'rgba(255,255,255,0.95)',
               border: '1px solid #e5e7eb',

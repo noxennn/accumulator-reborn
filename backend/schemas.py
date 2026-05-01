@@ -98,3 +98,35 @@ class AIOutput(AIOutputBase):
 
     class Config:
         from_attributes = True
+
+
+class InvalidByField(BaseModel):
+    co2: int = 0
+    voc: int = 0
+    pm25: int = 0
+    pm10: int = 0
+    missing: int = 0
+    other: int = 0
+
+
+class WatchSeriesPoint(BaseModel):
+    bucket_start: datetime
+    log_count: int
+    invalid_count: int
+    restart_warning_count: int
+    invalid_by_field: InvalidByField
+
+    @field_serializer('bucket_start')
+    def ser_bucket_start(self, v: datetime) -> str:
+        return _utc_iso(v)
+
+
+class WatchPeriodSeries(BaseModel):
+    granularity: str
+    points: list[WatchSeriesPoint]
+
+
+class WatchPeriodSeriesResponse(BaseModel):
+    day: WatchPeriodSeries
+    week: WatchPeriodSeries
+    month: WatchPeriodSeries

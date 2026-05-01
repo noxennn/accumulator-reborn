@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { sensorApi } from '../lib/sensorApi';
 
 export interface ThresholdStatus {
   co2: 'green' | 'yellow' | 'red';
@@ -34,19 +35,56 @@ export interface InvalidEntry {
   pm10: number;
 }
 
-const MAX_RENDER_POINTS = 3000;
+export interface DeviceEventEntry {
+  type: 'event';
+  timestamp: string;
+  event_type: string;
+  source?: string;
+  reason?: string;
+  payload?: unknown;
+}
+
+const MAX_RENDER_POINTS = 50;
 
 export function useWebSocketData() {
   const [dataBuffer, setDataBuffer] = useState<LiveDataPoint[]>([]);
   const [logsBuffer, setLogsBuffer] = useState<LogEntry[]>([]);
   const [invalidBuffer, setInvalidBuffer] = useState<InvalidEntry[]>([]);
+  const [eventBuffer, setEventBuffer] = useState<DeviceEventEntry[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMounted = useRef(true);
+  const isHydratedRef = useRef(false);
   const seenTimestampsRef = useRef<Set<string>>(new Set());
+
+  const hydrateInitialData = useCallback(async () => {
+    if (isHydratedRef.current || !isMounted.current) return;
+    try {
+      const initial = await sensorApi.getHistoricalData(undefined, undefined, {
+        limit: MAX_RENDER_POINTS,
+        chronological: true,
+      });
+      if (!isMounted.current) return;
+
+      const unique: LiveDataPoint[] = [];
+      const seen = new Set<string>();
+      for (const item of initial as LiveDataPoint[]) {
+        if (!item?.timestamp || seen.has(item.timestamp)) continue;
+        seen.add(item.timestamp);
+        unique.push(item);
+      }
+
+      setDataBuffer(unique.slice(-MAX_RENDER_POINTS));
+      seenTimestampsRef.current = new Set(unique.slice(-MAX_RENDER_POINTS).map(p => p.timestamp));
+      isHydratedRef.current = true;
+    } catch {
+      if (!isMounted.current) return;
+      setError(prev => prev ?? 'Initial history load failed');
+    }
+  }, []);
 
   const connect = useCallback(() => {
     if (!isMounted.current) return;
@@ -74,9 +112,11 @@ export function useWebSocketData() {
       try {
         const msg = JSON.parse(event.data as string);
         if (msg.type === 'log') {
-          setLogsBuffer(prev => [...prev, msg as LogEntry]);
+          setLogsBuffer(prev => [...prev, msg as LogEntry].slice(-MAX_RENDER_POINTS));
         } else if (msg.type === 'invalid') {
-          setInvalidBuffer(prev => [...prev, msg as InvalidEntry]);
+          setInvalidBuffer(prev => [...prev, msg as InvalidEntry].slice(-MAX_RENDER_POINTS));
+        } else if (msg.type === 'event') {
+          setEventBuffer(prev => [...prev, msg as DeviceEventEntry].slice(-MAX_RENDER_POINTS));
         } else {
           // type === 'data' or legacy (no type)
           const point = msg as LiveDataPoint;
@@ -110,13 +150,14 @@ export function useWebSocketData() {
 
   useEffect(() => {
     isMounted.current = true;
+    hydrateInitialData();
     connect();
     return () => {
       isMounted.current = false;
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       wsRef.current?.close();
     };
-  }, [connect]);
+  }, [connect, hydrateInitialData]);
 
-  return { dataBuffer, logsBuffer, invalidBuffer, isConnected, error };
+  return { dataBuffer, logsBuffer, invalidBuffer, eventBuffer, isConnected, error };
 }

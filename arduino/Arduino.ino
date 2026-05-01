@@ -185,6 +185,7 @@ bool ccsFilter(int rawCo2, int rawVoc) {
       Serial.println(F("[CCS] UYARI: Surekli aralik disi okuma - EEPROM baseline bozuk olabilir."));
       Serial.println(F("[CCS] EEPROM baseline silindi. Sistem yeniden baslatiliyor..."));
       wsSendRawLog("[CCS] EEPROM baseline bozuk olabilir, sistem resetlenecek");
+      wsSendRestartWarningEvent("invalid_data_threshold");
       EEPROM.update(EEPROM_BASELINE_ADDR + 2, 0x00);
       forceReset();
     }
@@ -267,6 +268,17 @@ void wsSendText(const char* msg) {
 void wsSendRawLog(const char* msg) {
   if (!client.connected()) return;
   wsSendText(msg);
+}
+
+void wsSendRestartWarningEvent(const char* reason) {
+  if (!client.connected()) return;
+  char payload[192];
+  snprintf(payload, sizeof(payload),
+           "{\"type\":\"event\",\"event_type\":\"restart_warning\",\"source\":\"arduino\",\"reason\":\"%s\"}",
+           reason);
+  wsSendText(payload);
+  client.flush();
+  delay(120);
 }
 
 bool wsHandshake() {

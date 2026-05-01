@@ -2,18 +2,23 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import {
-  LineChart,
+  Bar,
+  CartesianGrid,
+  ComposedChart,
   Line,
+  LineChart,
+  Legend,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
 import { useWebSocketData } from '../hooks/useWebSocketData';
+import { sensorApi, type WatchPeriodSeries } from '../lib/sensorApi';
 
-const PERIODS = [1, 5, 15, 30, 60] as const;
-type Period = (typeof PERIODS)[number];
+const MAX_POINTS = 50;
+const SUMMARY_PERIODS = ['day', 'week', 'month'] as const;
+type SummaryPeriod = (typeof SUMMARY_PERIODS)[number];
 
 function formatInvalidField(field: string): string {
   const key = field.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -38,16 +43,70 @@ const METRICS = [
   { key: 'pm10' as const, label: 'PM10',  unit: 'μg/m³',  color: '#10b981' },
 ];
 
+function formatSummaryLabel(ts: string, granularity: string): string {
+  const date = new Date(ts);
+  if (granularity === 'hour') {
+    return format(date, 'HH:mm');
+  }
+  return format(date, 'MM-dd');
+}
+
+function aggregateFieldCounts(series?: WatchPeriodSeries) {
+  return (series?.points ?? []).reduce(
+    (acc, point) => {
+      acc.co2 += point.invalid_by_field.co2;
+      acc.voc += point.invalid_by_field.voc;
+      acc.pm25 += point.invalid_by_field.pm25;
+      acc.pm10 += point.invalid_by_field.pm10;
+      acc.missing += point.invalid_by_field.missing;
+      acc.other += point.invalid_by_field.other;
+      return acc;
+    },
+    { co2: 0, voc: 0, pm25: 0, pm10: 0, missing: 0, other: 0 }
+  );
+}
+
 export default function Watch() {
   const { t } = useTranslation();
   const { dataBuffer, logsBuffer, invalidBuffer, isConnected, error } = useWebSocketData();
-  const [period, setPeriod] = useState<Period>(60);
+  const [periodSeries, setPeriodSeries] = useState<Record<SummaryPeriod, WatchPeriodSeries> | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [highlightedTimestamp, setHighlightedTimestamp] = useState<string | null>(null);
   const [hoveredTimestamp, setHoveredTimestamp] = useState<string | null>(null);
   const [chartPulse, setChartPulse] = useState(false);
   const lastSeenTimestampRef = useRef<string | null>(null);
 
   const latestPoint = dataBuffer[dataBuffer.length - 1] || null;
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadSeries = async () => {
+      try {
+        if (!mounted) return;
+        setSummaryLoading(true);
+        const response = await sensorApi.getWatchPeriodSeries();
+        if (!mounted) return;
+        setPeriodSeries(response);
+        setSummaryError(null);
+      } catch {
+        if (!mounted) return;
+        setSummaryError(t('watch.summaryLoadFailed'));
+      } finally {
+        if (!mounted) return;
+        setSummaryLoading(false);
+      }
+    };
+
+    loadSeries();
+    const timer = setInterval(loadSeries, 30000);
+
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [t]);
 
   useEffect(() => {
     if (!latestPoint?.timestamp) return;
@@ -66,13 +125,7 @@ export default function Watch() {
     };
   }, [latestPoint?.timestamp]);
 
-  const cutoff = useMemo(() => Date.now() - period * 1000, [period]);
-  const windowedData = useMemo(
-    () => dataBuffer.filter(p => new Date(p.timestamp).getTime() >= cutoff),
-    [dataBuffer, cutoff]
-  );
-
-  const chartAnimationEnabled = windowedData.length <= 180;
+  const chartAnimationEnabled = dataBuffer.length <= MAX_POINTS;
 
   const estimatedIntervalSeconds = useMemo(() => {
     if (dataBuffer.length < 3) return null;
@@ -95,11 +148,11 @@ export default function Watch() {
 
   const chartData = useMemo(
     () =>
-      windowedData.map(p => ({
+      dataBuffer.slice(-MAX_POINTS).map(p => ({
         ...p,
         time: format(new Date(p.timestamp), 'HH:mm:ss'),
       })),
-    [windowedData]
+    [dataBuffer]
   );
 
   const allData = useMemo(() => dataBuffer.slice().reverse(), [dataBuffer]);
@@ -138,13 +191,13 @@ export default function Watch() {
         <div className="card bg-base-200/80 shadow-sm border border-base-300">
           <div className="card-body p-4">
             <p className="text-xs uppercase tracking-wide opacity-60">{t('watch.points')}</p>
-            <p className="text-2xl font-semibold leading-none mt-1">{windowedData.length}</p>
+            <p className="text-2xl font-semibold leading-none mt-1">{dataBuffer.length}</p>
           </div>
         </div>
         <div className="card bg-base-200/80 shadow-sm border border-base-300">
           <div className="card-body p-4">
             <p className="text-xs uppercase tracking-wide opacity-60">{t('watch.chartWindow')}</p>
-            <p className="text-2xl font-semibold leading-none mt-1">{period}s</p>
+            <p className="text-2xl font-semibold leading-none mt-1">{t('watch.last50')}</p>
           </div>
         </div>
         <div className="card bg-base-200/80 shadow-sm border border-base-300">
@@ -154,6 +207,97 @@ export default function Watch() {
               {estimatedIntervalSeconds ? `${estimatedIntervalSeconds}s` : '-'}
             </p>
           </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold">{t('watch.periodSummaryTitle')}</h2>
+          {summaryLoading && <span className="text-xs opacity-60">{t('watch.loadingSummary')}</span>}
+        </div>
+
+        {summaryError && (
+          <div className="alert alert-warning text-sm py-2">{summaryError}</div>
+        )}
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          {SUMMARY_PERIODS.map((periodKey) => {
+            const series = periodSeries?.[periodKey];
+            const totals = (series?.points ?? []).reduce(
+              (acc, point) => {
+                acc.logCount += point.log_count;
+                acc.invalidCount += point.invalid_count;
+                acc.restartWarningCount += point.restart_warning_count;
+                return acc;
+              },
+              { logCount: 0, invalidCount: 0, restartWarningCount: 0 }
+            );
+            const fieldCounts = aggregateFieldCounts(series);
+            const chartPoints = (series?.points ?? []).map(point => ({
+              label: formatSummaryLabel(point.bucket_start, series?.granularity ?? 'day'),
+              logCount: point.log_count,
+              invalidCount: point.invalid_count,
+              restartWarningCount: point.restart_warning_count,
+            }));
+
+            return (
+              <div key={periodKey} className="card bg-base-200 shadow border border-base-300">
+                <div className="card-body p-4 gap-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold">{t(`watch.${periodKey}`)}</h3>
+                    <span className="text-xs opacity-60">{series?.points.length ?? 0} {t('watch.buckets')}</span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-lg bg-base-100/70 p-2">
+                      <p className="text-[10px] uppercase opacity-60">{t('watch.logs')}</p>
+                      <p className="font-semibold">{totals.logCount}</p>
+                    </div>
+                    <div className="rounded-lg bg-base-100/70 p-2">
+                      <p className="text-[10px] uppercase opacity-60">{t('watch.invalidData')}</p>
+                      <p className="font-semibold">{totals.invalidCount}</p>
+                    </div>
+                    <div className="rounded-lg bg-base-100/70 p-2">
+                      <p className="text-[10px] uppercase opacity-60">{t('watch.restartWarnings')}</p>
+                      <p className="font-semibold">{totals.restartWarningCount}</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-base-300 bg-base-100/50 p-2">
+                    <p className="text-xs font-medium mb-2 opacity-80">{t('watch.invalidByField')}</p>
+                    <div className="grid grid-cols-3 gap-x-2 gap-y-1 text-xs">
+                      <span>CO₂: {fieldCounts.co2}</span>
+                      <span>VOC: {fieldCounts.voc}</span>
+                      <span>PM2.5: {fieldCounts.pm25}</span>
+                      <span>PM10: {fieldCounts.pm10}</span>
+                      <span>{t('watch.missing')}: {fieldCounts.missing}</span>
+                      <span>{t('watch.other')}: {fieldCounts.other}</span>
+                    </div>
+                  </div>
+
+                  <ResponsiveContainer width="100%" height={170}>
+                    <ComposedChart data={chartPoints} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                      <XAxis dataKey="label" tick={{ fontSize: 10 }} minTickGap={18} />
+                      <YAxis tick={{ fontSize: 10 }} width={35} />
+                      <Tooltip />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      <Bar dataKey="logCount" name={t('watch.logs')} fill="#60a5fa" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="invalidCount" name={t('watch.invalidData')} fill="#f97316" radius={[4, 4, 0, 0]} />
+                      <Line
+                        type="monotone"
+                        dataKey="restartWarningCount"
+                        name={t('watch.restartWarnings')}
+                        stroke="#ef4444"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -215,36 +359,9 @@ export default function Watch() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-sm font-medium opacity-70">{t('watch.chartWindow')}:</span>
-        <div className="join">
-          {PERIODS.map(p => (
-            <button
-              key={p}
-              className={`join-item btn btn-sm ${
-                period === p ? 'btn-primary' : 'btn-ghost'
-              }`}
-              onClick={() => setPeriod(p)}
-            >
-              {p}s
-            </button>
-          ))}
-        </div>
-        <span className="text-xs opacity-50">
-          ({windowedData.length} {t('watch.points')})
-        </span>
+      <div className="text-xs opacity-60">
+        {t('watch.last50Hint')}
       </div>
-
-      {windowedData.length === 0 && (
-        <div className="alert alert-info text-sm">
-          <span>{t('watch.noDataInWindow', { period })}</span>
-          {estimatedIntervalSeconds && (
-            <span className="opacity-80">
-              {t('watch.samplingHint', { interval: estimatedIntervalSeconds })}
-            </span>
-          )}
-        </div>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {METRICS.map(({ key, label, unit, color }) => (
@@ -259,6 +376,11 @@ export default function Watch() {
                 {label}{' '}
                 <span className="text-xs font-normal opacity-50">({unit})</span>
               </h2>
+              {chartData.length === 0 ? (
+                <div className="flex justify-center items-center" style={{ height: 180 }}>
+                  <span className="loading loading-spinner loading-md opacity-40"></span>
+                </div>
+              ) : (
               <ResponsiveContainer width="100%" height={180}>
                 <LineChart
                   data={chartData}
@@ -303,6 +425,7 @@ export default function Watch() {
                   />
                 </LineChart>
               </ResponsiveContainer>
+              )}
             </div>
           </div>
         ))}
@@ -361,8 +484,8 @@ export default function Watch() {
                 <tbody>
                   {!isConnected && invalidBuffer.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="text-center py-4">
-                        <span className="loading loading-spinner loading-sm opacity-50"></span>
+                      <td colSpan={4} className="text-center opacity-50 py-4">
+                        {t('watch.waiting')}
                       </td>
                     </tr>
                   ) : invalidBuffer.length === 0 ? (

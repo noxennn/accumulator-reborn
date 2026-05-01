@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceArea } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import { RefreshCw } from 'lucide-react';
@@ -63,6 +63,10 @@ const Dashboard = () => {
     trendPeriod !== applied.trendPeriod;
 
   const [exceededIntervals, setExceededIntervals] = useState<ExceededInterval[]>([]);
+  const filteredExceededIntervals = useMemo(
+    () => exceededIntervals.filter(iv => iv.duration_minutes >= 5),
+    [exceededIntervals]
+  );
   const [exceededLoading, setExceededLoading] = useState(true);
   const [hoveredInterval, setHoveredInterval] = useState<ExceededInterval | null>(null);
 
@@ -436,12 +440,12 @@ const Dashboard = () => {
                 <div className="flex justify-center items-center py-6">
                   <span className="loading loading-spinner loading-md opacity-50"></span>
                 </div>
-              ) : exceededIntervals.filter(iv => visibleMetrics[iv.metric]).length === 0 ? (
+              ) : filteredExceededIntervals.filter(iv => visibleMetrics[iv.metric]).length === 0 ? (
                 <p className="text-sm opacity-40">{t('threshold.noExceededIntervals')}</p>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   {metrics.filter(m => visibleMetrics[m.id]).map(m => {
-                    const intervals = exceededIntervals
+                    const intervals = filteredExceededIntervals
                       .filter(iv => iv.metric === m.id)
                       .sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
                     return (
