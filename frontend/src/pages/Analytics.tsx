@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import { format, subDays } from 'date-fns';
 import { tr, enUS, type Locale } from 'date-fns/locale';
-import { FileText, FileDown, RefreshCw } from 'lucide-react';
+import { FileText, FileDown, RefreshCw, Table } from 'lucide-react';
 import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 import { analyticsApi } from '../lib/analyticsApi';
@@ -177,7 +177,7 @@ const Analytics = () => {
           const s = await analyticsApi.getMetricStats(id, start, end);
           stats[id] = analyticsApi.formatStats(s);
         } catch {
-          const vals = data.map(d => d[id]).filter(Boolean);
+          const vals = data.map(d => d[id]).filter(v => v !== null && v !== undefined).map(Number).filter(v => !Number.isNaN(v));
           if (!vals.length) { stats[id] = { min: '-', max: '-', avg: '-', std: '-' }; continue; }
           const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
           stats[id] = {
@@ -193,21 +193,55 @@ const Analytics = () => {
     load();
   }, [selectedMetrics, data, loading]);
 
-  // ── Rapor indir ──────────────────────────────────────────────────
+  // ── Dışa aktarma yardımcısı: istatistikleri doğrudan veri dizisinden hesapla ──
+  const getExportStats = (id: string) => {
+    const vals = data.map(d => d[id]).filter(v => v !== null && v !== undefined).map(Number).filter(v => !Number.isNaN(v));
+    if (!vals.length) return { min: '-', max: '-', avg: '-', std: '-' };
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const std = Math.sqrt(vals.reduce((a, b) => a + (b - avg) ** 2, 0) / vals.length);
+    return {
+      min: Math.min(...vals).toFixed(1),
+      max: Math.max(...vals).toFixed(1),
+      avg: avg.toFixed(1),
+      std: std.toFixed(1),
+    };
+  };
+
+  // ── TXT indir ────────────────────────────────────────────────────
   const downloadReport = () => {
-    const content = selectedMetrics.map(id => {
+    const { start, end } = getDateRange();
+    const header = `Hava Kalitesi Raporu\nTarih: ${start.slice(0, 10)} - ${end.slice(0, 10)}\n\n`;
+    const content = header + selectedMetrics.map(id => {
       const m = metrics.find(x => x.id === id)!;
-      const s = metricStats[id] || {};
-      return `${m.name} (${m.unit})\nMin: ${s.min ?? '-'}  Max: ${s.max ?? '-'}  Ort: ${s.avg ?? '-'}  StdSap: ${s.std ?? '-'}\n`;
+      const s = getExportStats(id);
+      return `${m.name} (${m.unit})\nMin: ${s.min}  Max: ${s.max}  Ort: ${s.avg}  StdSap: ${s.std}\n`;
     }).join('\n');
     const a = Object.assign(document.createElement('a'), {
-      href: URL.createObjectURL(new Blob([content], { type: 'text/plain' })),
+      href: URL.createObjectURL(new Blob(['﻿' + content], { type: 'text/plain;charset=utf-8' })),
       download: `air-quality-${format(new Date(), 'yyyy-MM-dd')}.txt`,
     });
     a.click();
     URL.revokeObjectURL(a.href);
   };
 
+  // ── CSV indir ────────────────────────────────────────────────────
+  const downloadCSV = () => {
+    if (!data.length) return;
+    const cols = ['timestamp', ...selectedMetrics];
+    const header = cols.join(',');
+    const rows = data.map(row =>
+      cols.map(c => (row[c] !== null && row[c] !== undefined ? row[c] : '')).join(',')
+    );
+    const csv = [header, ...rows].join('\n');
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })),
+      download: `air-quality-${format(new Date(), 'yyyy-MM-dd')}.csv`,
+    });
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  // ── PDF indir ────────────────────────────────────────────────────
   const downloadPDF = async () => {
     if (!chartRef.current) return;
     try {
@@ -233,17 +267,44 @@ const Analytics = () => {
         },
       });
       document.body.removeChild(container);
+
+      // jsPDF varsayılan fontu unicode desteklemez; sorunlu karakterleri ASCII'ye çevir
+      const pdfText = (text: string) =>
+        text.replace(/₂/g, '2').replace(/₃/g, '3').replace(/μ/g, 'u').replace(/[^\x00-\x7F]/g, '?');
+
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const w = 210, h = (canvas.height * w) / canvas.width;
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, w, h);
-      let y = h + 10;
-      pdf.setFontSize(11);
+      const pageW = 210, pageH = 297, margin = 10;
+
+      // Başlık
+      const { start, end } = getDateRange();
+      pdf.setFontSize(14);
+      pdf.text('Air Quality Report', margin, 15);
+      pdf.setFontSize(10);
+      pdf.text(`${start.slice(0, 10)} / ${end.slice(0, 10)}`, margin, 22);
+
+      // Grafik görseli
+      const imgY = 28;
+      const imgW = pageW - 2 * margin;
+      const imgH = Math.min((canvas.height * imgW) / canvas.width, pageH - imgY - 60);
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', margin, imgY, imgW, imgH);
+
+      // İstatistikler
+      let y = imgY + imgH + 12;
+      if (y + selectedMetrics.length * 17 > pageH - margin) {
+        pdf.addPage();
+        y = margin + 10;
+      }
+      pdf.setFontSize(12);
+      pdf.text('Statistics', margin, y); y += 8;
+      pdf.setFontSize(10);
       selectedMetrics.forEach(id => {
+        if (y > pageH - 25) { pdf.addPage(); y = margin + 10; }
         const m = metrics.find(x => x.id === id)!;
-        const s = metricStats[id] || {};
-        pdf.text(`${m.name} (${m.unit})`, 10, y); y += 7;
-        pdf.text(`Min: ${s.min ?? '-'}  Max: ${s.max ?? '-'}  Ort: ${s.avg ?? '-'}  StdSap: ${s.std ?? '-'}`, 15, y); y += 10;
+        const s = getExportStats(id);
+        pdf.text(pdfText(`${m.name} (${m.unit})`), margin, y); y += 6;
+        pdf.text(`Min: ${s.min}  Max: ${s.max}  Avg: ${s.avg}  Std: ${s.std}`, margin + 5, y); y += 10;
       });
+
       pdf.save(`air-quality-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
     } catch (e) {
       console.error(e);
@@ -329,17 +390,20 @@ const Analytics = () => {
             const m = metrics.find(x => x.id === id)!;
             if (chartType === 'area') return (
               <Area key={id} type="monotone" dataKey={id} stroke={m.color} fill={m.color}
-                name={`${m.name} (${m.unit})`} fillOpacity={0.3} strokeWidth={2} dot={false} />
+                name={`${m.name} (${m.unit})`} fillOpacity={0.3} strokeWidth={2} dot={false}
+                isAnimationActive={false} />
             );
             if (chartType === 'composed') return (
               <React.Fragment key={id}>
-                <Line type="monotone" dataKey={id} stroke={m.color} name={`${m.name} (${m.unit})`} strokeWidth={2} dot={false} />
-                <Scatter dataKey={id} fill={m.color} r={3} />
+                <Line type="monotone" dataKey={id} stroke={m.color} name={`${m.name} (${m.unit})`}
+                  strokeWidth={2} dot={false} isAnimationActive={false} />
+                <Scatter dataKey={id} fill={m.color} r={3} isAnimationActive={false} />
               </React.Fragment>
             );
             return (
               <Line key={id} type="monotone" dataKey={id} stroke={m.color}
-                name={`${m.name} (${m.unit})`} strokeWidth={2} dot={false} />
+                name={`${m.name} (${m.unit})`} strokeWidth={2} dot={false}
+                isAnimationActive={false} />
             );
           })}
         </ChartComp>
@@ -441,10 +505,13 @@ const Analytics = () => {
 
             {/* İndir + Yenile */}
             <div className="flex gap-2">
-              <button className="btn btn-outline btn-primary btn-sm" onClick={downloadReport} disabled={loading}>
+              <button className="btn btn-outline btn-primary btn-sm" onClick={downloadReport} disabled={loading || !data.length}>
                 <FileText className="w-4 h-4 mr-1" /> TXT
               </button>
-              <button className="btn btn-outline btn-primary btn-sm" onClick={downloadPDF} disabled={loading}>
+              <button className="btn btn-outline btn-primary btn-sm" onClick={downloadCSV} disabled={loading || !data.length}>
+                <Table className="w-4 h-4 mr-1" /> CSV
+              </button>
+              <button className="btn btn-outline btn-primary btn-sm" onClick={downloadPDF} disabled={loading || !data.length}>
                 <FileDown className="w-4 h-4 mr-1" /> PDF
               </button>
               <button className="btn btn-ghost btn-sm" onClick={fetchData} disabled={loading}>
