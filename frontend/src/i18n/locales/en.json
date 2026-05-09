@@ -208,6 +208,11 @@
     "field": "Field",
     "value": "Value",
     "reason": "Reason",
-    "message": "Message"
+    "message": "Message",
+    "arduinoStatus": "Arduino Connection Status",
+    "arduinoConnected": "Connected",
+    "arduinoDisconnected": "Disconnected",
+    "arduinoFirstConnected": "First Connected At",
+    "arduinoLastDisconnected": "Last Disconnected At"
   }
 }

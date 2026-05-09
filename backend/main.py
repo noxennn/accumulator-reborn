@@ -56,6 +56,19 @@ class ConnectionManager:
         self.recent_invalid: deque[dict] = deque(maxlen=50)
         self.recent_events:  deque[dict] = deque(maxlen=50)
 
+        # Arduino connection state
+        self.arduino_connected: bool = False
+        self.arduino_first_connected: Optional[datetime] = None
+        self.arduino_last_disconnected: Optional[datetime] = None
+
+    def get_arduino_status(self) -> dict:
+        return {
+            "type": "arduino_status",
+            "is_connected": self.arduino_connected,
+            "first_connected": _utc_iso(self.arduino_first_connected) if self.arduino_first_connected else None,
+            "last_disconnected": _utc_iso(self.arduino_last_disconnected) if self.arduino_last_disconnected else None,
+        }
+
     async def connect(self, websocket: WebSocket, thresholds: Optional[dict] = None):
         await websocket.accept()
         self.active_connections[websocket] = thresholds
@@ -69,6 +82,8 @@ class ConnectionManager:
                 await websocket.send_json(entry)
             for entry in self.recent_events:
                 await websocket.send_json(entry)
+            # Send current Arduino connection status to newly connected frontend clients.
+            await websocket.send_json(self.get_arduino_status())
         except Exception:
             self.disconnect(websocket)
 
@@ -296,6 +311,13 @@ async def check_and_alert(co2: float, voc: float, pm25: float, pm10: float, now_
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info(f"WebSocket connected: {websocket.client}")
+
+    now_utc = datetime.now(timezone.utc)
+    if manager.arduino_first_connected is None:
+        manager.arduino_first_connected = now_utc
+    manager.arduino_connected = True
+    asyncio.create_task(manager.broadcast(manager.get_arduino_status()))
+
     db = SessionLocal()
     try:
         while True:
@@ -507,6 +529,9 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket unexpected error: {e}")
     finally:
         db.close()
+        manager.arduino_connected = False
+        manager.arduino_last_disconnected = datetime.now(timezone.utc)
+        asyncio.create_task(manager.broadcast(manager.get_arduino_status()))
 
 
 @app.websocket("/ws/live")

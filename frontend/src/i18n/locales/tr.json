@@ -208,6 +208,11 @@
     "field": "Alan",
     "value": "Değer",
     "reason": "Neden",
-    "message": "Mesaj"
+    "message": "Mesaj",
+    "arduinoStatus": "Arduino Bağlantı Durumu",
+    "arduinoConnected": "Bağlı",
+    "arduinoDisconnected": "Bağlantı Yok",
+    "arduinoFirstConnected": "İlk Bağlantı Zamanı",
+    "arduinoLastDisconnected": "Son Bağlantı Kesme Zamanı"
   }
 }

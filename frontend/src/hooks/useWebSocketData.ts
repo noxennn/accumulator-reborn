@@ -44,6 +44,12 @@ export interface DeviceEventEntry {
   payload?: unknown;
 }
 
+export interface ArduinoStatus {
+  is_connected: boolean;
+  first_connected: string | null;
+  last_disconnected: string | null;
+}
+
 const MAX_RENDER_POINTS = 50;
 
 export function useWebSocketData() {
@@ -53,6 +59,11 @@ export function useWebSocketData() {
   const [eventBuffer, setEventBuffer] = useState<DeviceEventEntry[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [arduinoStatus, setArduinoStatus] = useState<ArduinoStatus>({
+    is_connected: false,
+    first_connected: null,
+    last_disconnected: null,
+  });
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -117,6 +128,12 @@ export function useWebSocketData() {
           setInvalidBuffer(prev => [...prev, msg as InvalidEntry].slice(-MAX_RENDER_POINTS));
         } else if (msg.type === 'event') {
           setEventBuffer(prev => [...prev, msg as DeviceEventEntry].slice(-MAX_RENDER_POINTS));
+        } else if (msg.type === 'arduino_status') {
+          setArduinoStatus({
+            is_connected: msg.is_connected,
+            first_connected: msg.first_connected ?? null,
+            last_disconnected: msg.last_disconnected ?? null,
+          });
         } else {
           // type === 'data' or legacy (no type)
           const point = msg as LiveDataPoint;
@@ -159,5 +176,5 @@ export function useWebSocketData() {
     };
   }, [connect, hydrateInitialData]);
 
-  return { dataBuffer, logsBuffer, invalidBuffer, eventBuffer, isConnected, error };
+  return { dataBuffer, logsBuffer, invalidBuffer, eventBuffer, isConnected, error, arduinoStatus };
 }
