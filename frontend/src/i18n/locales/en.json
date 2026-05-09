@@ -1,0 +1,212 @@
+{
+  "airQualityStation": "Air Quality Monitoring Station",
+  "dashboard": "Dashboard",
+  "analytics": "Analytics",
+  "settings": "Settings",
+  "logout": "Log Out",
+  "lastUpdated": "Last Updated",
+  "settingsPage": {
+    "title": "Settings",
+    "notifications": {
+      "title": "Notification Settings",
+      "enable": "Enable Notifications",
+      "description": "You will receive alerts when thresholds are exceeded",
+      "enabled": "Notifications are enabled",
+      "disabled": "Notifications are disabled"
+    },
+    "thresholds": {
+      "title": "Alert Thresholds",
+      "co2": "CO₂ (ppm)",
+      "pm25": "PM2.5 (μg/m³)",
+      "pm10": "PM10 (μg/m³)",
+      "voc": "VOC (ppb)"
+    },
+    "display": {
+      "title": "Display Settings",
+      "system": "Measurement System",
+      "metric": "Metric (°C, m³)",
+      "imperial": "Imperial (°F, ft³)"
+    },
+    "saveChanges": "Save Changes",
+    "saving": "Saving...",
+    "saveSuccess": "Settings saved successfully",
+    "loadError": "Failed to load settings. Using defaults.",
+    "saveError": "Failed to save settings"
+  },
+  "login": {
+    "title": "Log In to Your Account",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign In",
+    "register": "Register",
+    "noAccount": "Don't have an account?",
+    "invalidCredentials": "Invalid email or password",
+    "loggingIn": "Signing in...",
+    "continueWithoutLogin": "Continue without Login"
+  },
+  "register": {
+    "title": "Create a New Account",
+    "email": "Email",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "submit": "Create Account",
+    "login": "Log In",
+    "haveAccount": "Already have an account?",
+    "passwordMismatch": "Passwords do not match",
+    "invalidEmail": "Please enter a valid email address",
+    "passwordTooShort": "Password must be at least 6 characters",
+    "registrationFailed": "Registration failed. Please try again.",
+    "registering": "Creating account...",
+    "continueWithoutRegister": "Continue without Registration"
+  },
+  "sensors": {
+    "temperature": "Temperature",
+    "humidity": "Humidity",
+    "co2": "CO₂ Level",
+    "pm25": "PM2.5",
+    "pm10": "PM10",
+    "voc": "VOC",
+    "increasing": "Increasing",
+    "decreasing": "Decreasing",
+    "stable": "Stable"
+  },
+  "units": {
+    "temperature": "°C",
+    "humidity": "%",
+    "co2": "ppm",
+    "pm": "μg/m³",
+    "voc": "ppb"
+  },
+  "alerts": {
+    "title": "Alerts",
+    "high_co2": "High CO₂ Level",
+    "high_pm": "High Particulate Matter",
+    "high_voc": "High VOC Level",
+    "all_normal": "All values are within normal range.",
+    "some_high": "Some values are at high levels.",
+    "critical": "Danger! Air quality is at critical levels."
+  },
+  "analyticsPage": {
+    "dataPointsHint": "{{count}} data points · each point is the average for the selected period",
+    "last7Days": "Last 7 Days",
+    "last14Days": "Last 14 Days",
+    "last30Days": "Last 30 Days",
+    "custom": "Custom",
+    "customStart": "Start",
+    "customEnd": "End",
+    "apply": "Apply",
+    "trendAnalysis": "Trend Analysis",
+    "distribution": "Distribution",
+    "minimum": "Minimum",
+    "maximum": "Maximum",
+    "average": "Average",
+    "standardDeviation": "Standard Deviation",
+    "downloadReport": "Download Report",
+    "lineChart": "Line Chart",
+    "areaChart": "Area Chart",
+    "composedChart": "Composed Chart"
+  },
+  "predictions": {
+    "title": "Prediction",
+    "date": "Date",
+    "time": "Time",
+    "temperature": "Temperature",
+    "humidity": "Humidity",
+    "last7Hours": "Last 7 Hours"
+  },
+  "aqi": {
+    "title": "Air Quality Index",
+    "currentLevel": "Current AQI Level",
+    "levels": {
+      "good": "Good",
+      "moderate": "Moderate",
+      "poor": "Poor",
+      "veryPoor": "Very Poor",
+      "hazardous": "Hazardous"
+    },
+    "description": {
+      "good": "Air quality is satisfactory and poses little or no risk.",
+      "moderate": "Air quality is acceptable; some pollutants may be a concern for sensitive individuals.",
+      "poor": "Members of sensitive groups may experience health effects.",
+      "veryPoor": "Everyone may begin to experience health effects.",
+      "hazardous": "Health alert: everyone may experience serious health effects."
+    }
+  },
+  "trend": {
+    "title": "24-Hour Trend",
+    "legendHelp": "Click on labels to show or hide values",
+    "apply": "Apply",
+    "periods": {
+      "5m":  "5 min",
+      "15m": "15 min",
+      "30m": "30 min",
+      "1h":  "1 hr",
+      "2h":  "2 hr",
+      "4h":  "4 hr",
+      "8h":  "8 hr",
+      "12h": "12 hr",
+      "1d":  "1 day"
+    }
+  },
+  "errors": {
+    "dataLoadFailed": "Failed to load data",
+    "tryAgainMessage": "Please check your internet connection and try again",
+    "historicalDataFailed": "Failed to load historical sensor data",
+    "noDataAvailable": "No data available for the selected period",
+    "pdfGenerationFailed": "Failed to generate PDF report"
+  },
+  "stats": {
+    "min": "Min",
+    "avg": "Avg",
+    "max": "Max",
+    "today": "today"
+  },
+  "actions": {
+    "refresh": "Refresh"
+  },
+  "threshold": {
+    "exceededIntervals": "Threshold Exceeded Intervals",
+    "noExceededIntervals": "No threshold exceedances in this period",
+    "minSuffix": " min",
+    "focused": "focused"
+  },
+  "watch": {
+    "title": "Live Watch",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "liveData": "Live Data",
+    "latestTen": "Latest 10 rows",
+    "lastUpdate": "Last update",
+    "time": "Time",
+    "waiting": "Waiting for data...",
+    "window": "Window",
+    "chartWindow": "Chart window",
+    "last50": "Last 50",
+    "last50Hint": "Charts and table always display the latest 50 samples. When a new sample arrives, the oldest one is removed.",
+    "samplingRate": "Sampling interval",
+    "points": "points",
+    "noDataInWindow": "No samples in the last {{period}} seconds.",
+    "samplingHint": "Your sensor sends data about every {{interval}} seconds. Try a wider window.",
+    "allData": "All Data",
+    "records": "records",
+    "logs": "Arduino Logs",
+    "logsEmpty": "Waiting for logs...",
+    "invalidData": "Invalid Data",
+    "periodSummaryTitle": "Log and Invalid Data Period Summaries",
+    "loadingSummary": "Loading summaries...",
+    "summaryLoadFailed": "Failed to load period summaries",
+    "day": "Daily",
+    "week": "Weekly",
+    "month": "Monthly",
+    "buckets": "buckets",
+    "restartWarnings": "Restart Warnings",
+    "invalidByField": "Invalid Data by Field",
+    "missing": "Missing",
+    "other": "Other",
+    "invalidEmpty": "No invalid data",
+    "field": "Field",
+    "value": "Value",
+    "reason": "Reason",
+    "message": "Message"
+  }
+}

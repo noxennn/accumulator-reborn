@@ -1,0 +1,212 @@
+{
+  "airQualityStation": "Hava Kalitesi İzleme İstasyonu",
+  "dashboard": "Gösterge Paneli",
+  "analytics": "Analizler",
+  "settings": "Ayarlar",
+  "logout": "Çıkış Yap",
+  "lastUpdated": "Son Güncelleme",
+  "settingsPage": {
+    "title": "Ayarlar",
+    "notifications": {
+      "title": "Bildirim Ayarları",
+      "enable": "Bildirimleri Etkinleştir",
+      "description": "Eşik değerleri aşıldığında uyarı alacaksınız",
+      "enabled": "Bildirimler etkin",
+      "disabled": "Bildirimler devre dışı"
+    },
+    "thresholds": {
+      "title": "Uyarı Eşikleri",
+      "co2": "CO₂ (ppm)",
+      "pm25": "PM2.5 (μg/m³)",
+      "pm10": "PM10 (μg/m³)",
+      "voc": "VOC (ppb)"
+    },
+    "display": {
+      "title": "Görüntüleme Ayarları",
+      "system": "Ölçüm Sistemi",
+      "metric": "Metrik (°C, m³)",
+      "imperial": "İmparatorluk (°F, ft³)"
+    },
+    "saveChanges": "Değişiklikleri Kaydet",
+    "saving": "Kaydediliyor...",
+    "saveSuccess": "Ayarlar başarıyla kaydedildi",
+    "loadError": "Ayarlar yüklenemedi. Varsayılanlar kullanılıyor.",
+    "saveError": "Ayarlar kaydedilemedi"
+  },
+  "login": {
+    "title": "Hesabınıza Giriş Yapın",
+    "email": "E-posta",
+    "password": "Şifre",
+    "submit": "Giriş Yap",
+    "register": "Kayıt Ol",
+    "noAccount": "Hesabınız yok mu?",
+    "invalidCredentials": "Geçersiz e-posta veya şifre",
+    "loggingIn": "Giriş yapılıyor...",
+    "continueWithoutLogin": "Giriş Yapmadan Devam Et"
+  },
+  "register": {
+    "title": "Yeni Hesap Oluştur",
+    "email": "E-posta",
+    "password": "Şifre",
+    "confirmPassword": "Şifreyi Onaylayın",
+    "submit": "Hesap Oluştur",
+    "login": "Giriş Yap",
+    "haveAccount": "Zaten hesabınız var mı?",
+    "passwordMismatch": "Şifreler eşleşmiyor",
+    "invalidEmail": "Lütfen geçerli bir e-posta adresi girin",
+    "passwordTooShort": "Şifre en az 6 karakter olmalıdır",
+    "registrationFailed": "Kayıt başarısız oldu. Lütfen tekrar deneyin.",
+    "registering": "Hesap oluşturuluyor...",
+    "continueWithoutRegister": "Kayıt Olmadan Devam Et"
+  },
+  "sensors": {
+    "temperature": "Sıcaklık",
+    "humidity": "Nem",
+    "co2": "CO₂ Seviyesi",
+    "pm25": "PM2.5",
+    "pm10": "PM10",
+    "voc": "VOC",
+    "increasing": "Yükseliyor",
+    "decreasing": "Düşüyor",
+    "stable": "Sabit"
+  },
+  "units": {
+    "temperature": "°C",
+    "humidity": "%",
+    "co2": "ppm",
+    "pm": "μg/m³",
+    "voc": "ppb"
+  },
+  "alerts": {
+    "title": "Uyarılar",
+    "high_co2": "Yüksek CO₂ Seviyesi",
+    "high_pm": "Yüksek Partikül Madde",
+    "high_voc": "Yüksek VOC Seviyesi",
+    "all_normal": "Tüm değerler normal aralıkta.",
+    "some_high": "Bazı değerler yüksek seviyede.",
+    "critical": "Tehlike! Hava kalitesi kritik seviyede."
+  },
+  "analyticsPage": {
+    "dataPointsHint": "{{count}} veri noktası · her nokta seçilen periyodun ortalaması",
+    "last7Days": "Son 7 Gün",
+    "last14Days": "Son 14 Gün",
+    "last30Days": "Son 30 Gün",
+    "custom": "Özel",
+    "customStart": "Başlangıç",
+    "customEnd": "Bitiş",
+    "apply": "Uygula",
+    "trendAnalysis": "Trend Analizi",
+    "distribution": "Dağılım",
+    "minimum": "Minimum",
+    "maximum": "Maksimum",
+    "average": "Ortalama",
+    "standardDeviation": "Standart Sapma",
+    "downloadReport": "Rapor İndir",
+    "lineChart": "Çizgi Grafik",
+    "areaChart": "Alan Grafik",
+    "composedChart": "Karma Grafik"
+  },
+  "predictions": {
+    "title": "Tahmin",
+    "date": "Tarih",
+    "time": "Saat",
+    "temperature": "Sıcaklık",
+    "humidity": "Nem",
+    "last7Hours": "Son 7 Saat"
+  },
+  "aqi": {
+    "title": "Hava Kalitesi İndeksi",
+    "currentLevel": "Mevcut Seviye",
+    "levels": {
+      "good": "İyi",
+      "moderate": "Orta",
+      "poor": "Kötü",
+      "veryPoor": "Çok Kötü",
+      "hazardous": "Tehlikeli"
+    },
+    "description": {
+      "good": "Hava kalitesi tatmin edici düzeyde, herhangi bir risk oluşturmuyor.",
+      "moderate": "Hava kalitesi kabul edilebilir; hassas bireyler için bazı kirleticiler endişe verici olabilir.",
+      "poor": "Hassas gruplar sağlık etkileri yaşayabilir.",
+      "veryPoor": "Herkes sağlık etkileri yaşamaya başlayabilir.",
+      "hazardous": "Sağlık uyarısı: Herkes ciddi sağlık etkileriyle karşılaşabilir."
+    }
+  },
+  "trend": {
+    "title": "24 Saatlik Trend",
+    "legendHelp": "Değerleri göstermek veya gizlemek için etiketlere tıklayın",
+    "apply": "Uygula",
+    "periods": {
+      "5m":  "5 dk",
+      "15m": "15 dk",
+      "30m": "30 dk",
+      "1h":  "1 sa",
+      "2h":  "2 sa",
+      "4h":  "4 sa",
+      "8h":  "8 sa",
+      "12h": "12 sa",
+      "1d":  "1 gün"
+    }
+  },
+  "errors": {
+    "dataLoadFailed": "Veri yüklenemedi",
+    "tryAgainMessage": "Lütfen internet bağlantınızı kontrol edin ve tekrar deneyin",
+    "historicalDataFailed": "Geçmiş sensör verileri yüklenemedi",
+    "noDataAvailable": "Seçilen dönem için veri bulunamadı",
+    "pdfGenerationFailed": "PDF raporu oluşturulamadı"
+  },
+  "stats": {
+    "min": "Min",
+    "avg": "Ort",
+    "max": "Maks",
+    "today": "bugün"
+  },
+  "actions": {
+    "refresh": "Yenile"
+  },
+  "threshold": {
+    "exceededIntervals": "Eşik Aşılan Aralıklar",
+    "noExceededIntervals": "Bu dönemde eşik aşımı yok",
+    "minSuffix": " dk",
+    "focused": "odaklandı"
+  },
+  "watch": {
+    "title": "Canlı İzleme",
+    "connected": "Bağlı",
+    "disconnected": "Bağlı Değil",
+    "liveData": "Canlı Veri",
+    "latestTen": "Son 10 kayıt",
+    "lastUpdate": "Son güncelleme",
+    "time": "Saat",
+    "waiting": "Veri bekleniyor...",
+    "window": "Pencere",
+    "chartWindow": "Grafik penceresi",
+    "last50": "Son 50",
+    "last50Hint": "Grafikler ve tablo her zaman son 50 örneği gösterir. Yeni örnek geldiğinde en eski örnek çıkarılır.",
+    "samplingRate": "Örnekleme aralığı",
+    "points": "nokta",
+    "noDataInWindow": "Son {{period}} saniyede veri yok.",
+    "samplingHint": "Sensör yaklaşık her {{interval}} saniyede veri gönderiyor. Daha geniş pencere seçebilirsiniz.",
+    "allData": "Tüm Veriler",
+    "records": "kayıt",
+    "logs": "Arduino Logları",
+    "logsEmpty": "Log bekleniyor...",
+    "invalidData": "Geçersiz Veriler",
+    "periodSummaryTitle": "Log ve Geçersiz Veri Dönem Özetleri",
+    "loadingSummary": "Özetler yükleniyor...",
+    "summaryLoadFailed": "Dönem özetleri yüklenemedi",
+    "day": "Günlük",
+    "week": "Haftalık",
+    "month": "Aylık",
+    "buckets": "dilim",
+    "restartWarnings": "Restart Uyarıları",
+    "invalidByField": "Alana Göre Geçersiz Veri",
+    "missing": "Eksik",
+    "other": "Diğer",
+    "invalidEmpty": "Geçersiz veri yok",
+    "field": "Alan",
+    "value": "Değer",
+    "reason": "Neden",
+    "message": "Mesaj"
+  }
+}
