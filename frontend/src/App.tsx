@@ -45,13 +45,8 @@ const Navbar = () => {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0 lg:hidden">
           <Wind className="w-5 h-5 text-primary shrink-0" />
-          <h1 className="text-sm sm:text-lg font-semibold truncate">
-            Accumulator
-          </h1>
+          <h1 className="text-sm sm:text-lg font-semibold truncate">{t('appTitle')}</h1>
         </div>
-        <h1 className="hidden lg:block text-lg md:text-xl font-semibold truncate max-w-[55vw]">
-          {t('airQualityStation')}
-        </h1>
       </div>
       <div className="flex-none flex items-center gap-0.5 sm:gap-1">
         <ThemeToggle />

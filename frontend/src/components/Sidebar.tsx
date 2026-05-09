@@ -11,10 +11,7 @@ const Sidebar = () => {
     <div className="hidden lg:flex sticky top-0 h-screen w-64 bg-base-200 p-4 flex-col shrink-0 overflow-y-auto">
       <div className="flex items-center gap-2 mb-8">
         <Wind className="w-8 h-8 text-primary" />
-        <div>
-          <h1 className="text-xl font-bold">Accumulator</h1>
-          <p className="text-xs opacity-70">{t('airQualityStation')}</p>
-        </div>
+        <h1 className="text-xl font-bold">{t('appTitle')}</h1>
       </div>
       
       <nav className="flex flex-col gap-2">
