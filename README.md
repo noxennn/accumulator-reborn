@@ -32,7 +32,7 @@ Arduino tabanli bir hava kalitesi izleme sistemi. ESP8266 uzerinden WebSocket il
 
 ```bash
 # 1. Repo'yu klonla
-git clone https://github.com/noxennn/accumulator-reborn.git
+git clone https://github.com/burakpekisik/accumulator-reborn.git
 cd accumulator-reborn
 
 # 2. Backend (yeni bir terminalde)
