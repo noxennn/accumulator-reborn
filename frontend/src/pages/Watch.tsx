@@ -204,6 +204,7 @@ export default function Watch() {
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
           {SUMMARY_PERIODS.map((periodKey) => {
             const series = periodSeries?.[periodKey];
+            const isSeriesLoading = summaryLoading && !series;
             const totals = (series?.points ?? []).reduce(
               (acc, point) => {
                 acc.logCount += point.log_count;
@@ -229,52 +230,61 @@ export default function Watch() {
                     <span className="text-xs opacity-60">{series?.points.length ?? 0} {t('watch.buckets')}</span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-lg bg-base-100/70 p-2">
-                      <p className="text-[10px] uppercase opacity-60">{t('watch.logs')}</p>
-                      <p className="font-semibold">{totals.logCount}</p>
+                  {isSeriesLoading ? (
+                    <div className="flex justify-center items-center" style={{ height: 286 }}>
+                      <span className="loading loading-spinner loading-md opacity-50"></span>
                     </div>
-                    <div className="rounded-lg bg-base-100/70 p-2">
-                      <p className="text-[10px] uppercase opacity-60">{t('watch.invalidData')}</p>
-                      <p className="font-semibold">{totals.invalidCount}</p>
-                    </div>
-                    <div className="rounded-lg bg-base-100/70 p-2">
-                      <p className="text-[10px] uppercase opacity-60">{t('watch.restartWarnings')}</p>
-                      <p className="font-semibold">{totals.restartWarningCount}</p>
-                    </div>
-                  </div>
+                  ) : (
+                    <>
 
-                  <div className="rounded-lg border border-base-300 bg-base-100/50 p-2">
-                    <p className="text-xs font-medium mb-2 opacity-80">{t('watch.invalidByField')}</p>
-                    <div className="grid grid-cols-3 gap-x-2 gap-y-1 text-xs">
-                      <span>CO₂: {fieldCounts.co2}</span>
-                      <span>VOC: {fieldCounts.voc}</span>
-                      <span>PM2.5: {fieldCounts.pm25}</span>
-                      <span>PM10: {fieldCounts.pm10}</span>
-                      <span>{t('watch.missing')}: {fieldCounts.missing}</span>
-                      <span>{t('watch.other')}: {fieldCounts.other}</span>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-lg bg-base-100/70 p-2">
+                        <p className="text-[10px] uppercase opacity-60">{t('watch.logs')}</p>
+                        <p className="font-semibold">{totals.logCount}</p>
+                      </div>
+                      <div className="rounded-lg bg-base-100/70 p-2">
+                        <p className="text-[10px] uppercase opacity-60">{t('watch.invalidData')}</p>
+                        <p className="font-semibold">{totals.invalidCount}</p>
+                      </div>
+                      <div className="rounded-lg bg-base-100/70 p-2">
+                        <p className="text-[10px] uppercase opacity-60">{t('watch.restartWarnings')}</p>
+                        <p className="font-semibold">{totals.restartWarningCount}</p>
+                      </div>
                     </div>
-                  </div>
 
-                  <ResponsiveContainer width="100%" height={170}>
-                    <ComposedChart data={chartPoints} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-                      <XAxis dataKey="label" tick={{ fontSize: 10 }} minTickGap={18} />
-                      <YAxis tick={{ fontSize: 10 }} width={35} />
-                      <Tooltip />
-                      <Legend wrapperStyle={{ fontSize: 10 }} />
-                      <Bar dataKey="logCount" name={t('watch.logs')} fill="#60a5fa" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="invalidCount" name={t('watch.invalidData')} fill="#f97316" radius={[4, 4, 0, 0]} />
-                      <Line
-                        type="monotone"
-                        dataKey="restartWarningCount"
-                        name={t('watch.restartWarnings')}
-                        stroke="#ef4444"
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                    </ComposedChart>
-                  </ResponsiveContainer>
+                    <div className="rounded-lg border border-base-300 bg-base-100/50 p-2">
+                      <p className="text-xs font-medium mb-2 opacity-80">{t('watch.invalidByField')}</p>
+                      <div className="grid grid-cols-3 gap-x-2 gap-y-1 text-xs">
+                        <span>CO₂: {fieldCounts.co2}</span>
+                        <span>VOC: {fieldCounts.voc}</span>
+                        <span>PM2.5: {fieldCounts.pm25}</span>
+                        <span>PM10: {fieldCounts.pm10}</span>
+                        <span>{t('watch.missing')}: {fieldCounts.missing}</span>
+                        <span>{t('watch.other')}: {fieldCounts.other}</span>
+                      </div>
+                    </div>
+
+                    <ResponsiveContainer width="100%" height={170}>
+                      <ComposedChart data={chartPoints} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                        <XAxis dataKey="label" tick={{ fontSize: 10 }} minTickGap={18} />
+                        <YAxis tick={{ fontSize: 10 }} width={35} />
+                        <Tooltip />
+                        <Legend wrapperStyle={{ fontSize: 10 }} />
+                        <Bar dataKey="logCount" name={t('watch.logs')} fill="#60a5fa" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="invalidCount" name={t('watch.invalidData')} fill="#f97316" radius={[4, 4, 0, 0]} />
+                        <Line
+                          type="monotone"
+                          dataKey="restartWarningCount"
+                          name={t('watch.restartWarnings')}
+                          stroke="#ef4444"
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                    </>
+                  )}
                 </div>
               </div>
             );
