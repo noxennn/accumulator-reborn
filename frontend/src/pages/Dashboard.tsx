@@ -298,7 +298,7 @@ const Dashboard = () => {
         {isAuthenticated && <AlertIndicator alerts={allAlerts} />}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className={`grid grid-cols-1 ${isAuthenticated ? 'lg:grid-cols-2' : 'lg:grid-cols-1'} gap-6`}>
         <div className="card bg-base-100 shadow-xl">
           <div className="card-body">
             <div className="flex items-center justify-between flex-wrap gap-2">
