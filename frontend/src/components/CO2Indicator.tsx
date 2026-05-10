@@ -27,7 +27,9 @@ const CO2Indicator: React.FC<CO2IndicatorProps> = ({ value, timestamp, stats }) 
               />
             </div>
           </div>
-          <div className="text-2xl font-bold">{Math.round(value)} ppm</div>
+          <div className="text-2xl font-bold leading-none">
+            {Math.round(value)} <span className="text-sm font-semibold opacity-70">ppm</span>
+          </div>
         </div>
         {stats && <StatsRow stats={stats} unit="ppm" precision={0} />}
       </div>

@@ -9,6 +9,7 @@ import PM25Indicator from '../components/PM25Indicator';
 import PM10Indicator from '../components/PM10Indicator';
 import VOCIndicator from '../components/VOCIndicator';
 import AlertIndicator from '../components/AlertIndicator';
+import InfoTooltip from '../components/InfoTooltip';
 import { useAlerts } from '../hooks/useAlerts';
 import { useDailyStats } from '../hooks/useDailyStats';
 import { sensorApi } from '../lib/sensorApi';
@@ -35,6 +36,13 @@ const TREND_PERIODS = ['5m', '15m', '30m', '1h', '2h'];
 const toHHMM = (d: Date) =>
   `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
+const CardTitleWithInfo = ({ title, info }: { title: string; info: string }) => (
+  <div className="flex items-center gap-1.5">
+    <h3 className="card-title text-base">{title}</h3>
+    <InfoTooltip title={title} description={info} />
+  </div>
+);
+
 const Dashboard = () => {
   const { t } = useTranslation();
   const { isAuthenticated } = useAuth();
@@ -43,6 +51,7 @@ const Dashboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentData, setCurrentData] = useState<SensorData | null>(null);
   const [historicalData, setHistoricalData] = useState<SensorData[]>([]);
+  const [dashboardAnalysis, setDashboardAnalysis] = useState<Awaited<ReturnType<typeof analyticsApi.getDashboardAnalysis>> | null>(null);
   const [settings, setSettings] = useState<UserSettings | null>(null);
 
   const [trendPeriod, setTrendPeriod] = useState('15m');
@@ -121,16 +130,24 @@ const Dashboard = () => {
 
     try {
       setHistLoading(true);
-      const rows = await analyticsApi.getAggregatedData(
-        startDate.toISOString(),
-        clampedEnd.toISOString(),
-        applied.trendPeriod
-      );
+      const [rows, analysis] = await Promise.all([
+        analyticsApi.getAggregatedData(
+          startDate.toISOString(),
+          clampedEnd.toISOString(),
+          applied.trendPeriod
+        ),
+        analyticsApi.getDashboardAnalysis(
+          startDate.toISOString(),
+          clampedEnd.toISOString(),
+          applied.trendPeriod
+        ),
+      ]);
       const formatted = rows.map((r: any) => ({
         ...r,
         time: new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       }));
       setHistoricalData(formatted);
+      setDashboardAnalysis(analysis);
     } catch (err) {
       console.error('Error fetching historical sensor data:', err);
       setError(t('errors.historicalDataFailed'));
@@ -203,55 +220,6 @@ const Dashboard = () => {
     return best.time ?? null;
   };
 
-  const calculateAQI = (pm25: number, pm10: number) => {
-    const PM25_BREAKPOINTS = [
-      { cLow: 0.0, cHigh: 9.0, iLow: 0, iHigh: 50 },
-      { cLow: 9.1, cHigh: 35.4, iLow: 51, iHigh: 100 },
-      { cLow: 35.5, cHigh: 55.4, iLow: 101, iHigh: 150 },
-      { cLow: 55.5, cHigh: 125.4, iLow: 151, iHigh: 200 },
-      { cLow: 125.5, cHigh: 225.4, iLow: 201, iHigh: 300 },
-      { cLow: 225.5, cHigh: 325.4, iLow: 301, iHigh: 400 },
-      { cLow: 325.5, cHigh: 500.4, iLow: 401, iHigh: 500 },
-    ];
-
-    const PM10_BREAKPOINTS = [
-      { cLow: 0, cHigh: 54, iLow: 0, iHigh: 50 },
-      { cLow: 55, cHigh: 154, iLow: 51, iHigh: 100 },
-      { cLow: 155, cHigh: 254, iLow: 101, iHigh: 150 },
-      { cLow: 255, cHigh: 354, iLow: 151, iHigh: 200 },
-      { cLow: 355, cHigh: 424, iLow: 201, iHigh: 300 },
-      { cLow: 425, cHigh: 504, iLow: 301, iHigh: 400 },
-      { cLow: 505, cHigh: 604, iLow: 401, iHigh: 500 },
-    ];
-
-    const toSubIndex = (
-      concentration: number,
-      breakpoints: Array<{ cLow: number; cHigh: number; iLow: number; iHigh: number }>,
-      precision: number
-    ) => {
-      const c = Number.isFinite(concentration) ? Math.max(0, concentration) : 0;
-      const factor = 10 ** precision;
-      const cTruncated = Math.floor(c * factor) / factor;
-
-      const bp = breakpoints.find(({ cLow, cHigh }) => cTruncated >= cLow && cTruncated <= cHigh);
-      if (!bp) {
-        return cTruncated > breakpoints[breakpoints.length - 1].cHigh ? 500 : 0;
-      }
-
-      const subIndex =
-        ((bp.iHigh - bp.iLow) / (bp.cHigh - bp.cLow)) *
-          (cTruncated - bp.cLow) +
-        bp.iLow;
-
-      return Math.round(subIndex);
-    };
-
-    const pm25Index = toSubIndex(pm25, PM25_BREAKPOINTS, 1);
-    const pm10Index = toSubIndex(pm10, PM10_BREAKPOINTS, 0);
-
-    return Math.max(pm25Index, pm10Index);
-  };
-
   const getLatestData = () => {
     if (currentData) {
       return {
@@ -259,10 +227,10 @@ const Dashboard = () => {
         pm25: currentData.pm25,
         pm10: currentData.pm10,
         voc: currentData.voc,
-        aqi: calculateAQI(currentData.pm25, currentData.pm10)
+        aqi: dashboardAnalysis?.aqi ?? 0
       };
     }
-    return { co2: 600, pm25: 15, pm10: 30, voc: 1.2, aqi: 60 };
+    return { co2: 600, pm25: 15, pm10: 30, voc: 1.2, aqi: dashboardAnalysis?.aqi ?? 60 };
   };
 
   const latestData = getLatestData();
@@ -285,6 +253,8 @@ const Dashboard = () => {
     { id: 'pm10', name: t('sensors.pm10'), color: '#ffc658', unit: 'μg/m³' },
     { id: 'voc',  name: t('sensors.voc'),  color: '#ff8042', unit: 'ppb'   }
   ];
+
+  const advancedAnalysis = dashboardAnalysis?.advanced ?? null;
 
   if (loading && !currentData && !historicalData.length) {
     return (
@@ -329,33 +299,123 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* Row 1: AQI + Air quality indicators */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Row 1: AQI + pollutant indicators */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
         <AQIIndicator value={latestData.aqi} timestamp={currentData?.timestamp} />
         <CO2Indicator  value={latestData.co2}  timestamp={currentData?.timestamp} stats={dailyStats.co2} />
+        <VOCIndicator value={latestData.voc} timestamp={currentData?.timestamp} stats={dailyStats.voc} />
         <PM25Indicator value={latestData.pm25} timestamp={currentData?.timestamp} stats={dailyStats.pm25} />
         <PM10Indicator value={latestData.pm10} timestamp={currentData?.timestamp} stats={dailyStats.pm10} />
       </div>
 
-      {/* Row 2: VOC + Alert */}
-      <div className={`grid grid-cols-1 md:grid-cols-2 ${isAuthenticated ? 'lg:grid-cols-2' : 'lg:grid-cols-1'} gap-4`}>
-        <VOCIndicator value={latestData.voc} timestamp={currentData?.timestamp} stats={dailyStats.voc} />
-        {isAuthenticated && <AlertIndicator alerts={allAlerts} />}
-      </div>
+      {isAuthenticated && advancedAnalysis && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+            <div className="card bg-base-100 shadow-xl">
+              <div className="card-body p-4">
+                <CardTitleWithInfo
+                  title={t('dashboardAnalysis.titles.exceedanceDuration')}
+                  info={t('dashboardAnalysis.info.exceedanceDuration')}
+                />
+                <div className="text-sm space-y-1 font-mono">
+                  <p>{t('sensors.co2')}: {advancedAnalysis.duration_by_metric.co2} {t('dashboardAnalysis.units.minuteShort')}</p>
+                  <p>{t('sensors.voc')}: {advancedAnalysis.duration_by_metric.voc} {t('dashboardAnalysis.units.minuteShort')}</p>
+                  <p>{t('sensors.pm25')}: {advancedAnalysis.duration_by_metric.pm25} {t('dashboardAnalysis.units.minuteShort')}</p>
+                  <p>{t('sensors.pm10')}: {advancedAnalysis.duration_by_metric.pm10} {t('dashboardAnalysis.units.minuteShort')}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="card bg-base-100 shadow-xl">
+              <div className="card-body p-4">
+                <CardTitleWithInfo
+                  title={t('dashboardAnalysis.titles.peakRecovery')}
+                  info={t('dashboardAnalysis.info.peakRecovery')}
+                />
+                {advancedAnalysis.peak ? (
+                  <div className="text-sm space-y-1">
+                    <p>
+                      {t('dashboardAnalysis.labels.peak')}: <span className="font-semibold">{advancedAnalysis.peak.metric.toUpperCase()}</span> ({advancedAnalysis.peak.value})
+                    </p>
+                    <p className="opacity-70">{fmtTime(advancedAnalysis.peak.timestamp)}</p>
+                    <p>
+                      {t('dashboardAnalysis.labels.recovery')}:{' '}
+                      <span className="font-semibold">
+                        {advancedAnalysis.recovery_minutes !== null
+                          ? `${advancedAnalysis.recovery_minutes} ${t('dashboardAnalysis.units.minuteShort')}`
+                          : t('dashboardAnalysis.labels.notRecovered')}
+                      </span>
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm opacity-60">{t('dashboardAnalysis.labels.noPeakExceedance')}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="card bg-base-100 shadow-xl">
+              <div className="card-body p-4">
+                <CardTitleWithInfo
+                  title={t('dashboardAnalysis.titles.ventilationEfficiency')}
+                  info={t('dashboardAnalysis.info.ventilationEfficiency')}
+                />
+                <p className="text-sm opacity-70">{t('dashboardAnalysis.labels.co2Slope')}</p>
+                <p className="text-2xl font-bold">{advancedAnalysis.co2_slope_per_minute} {t('dashboardAnalysis.units.ppmPerMinute')}</p>
+                <p className="text-sm font-semibold">
+                  {advancedAnalysis.ventilation_label_key === 'insufficientData'
+                    ? t('dashboardAnalysis.labels.insufficientData')
+                    : t(`dashboardAnalysis.ventilation.${advancedAnalysis.ventilation_label_key}`)}
+                </p>
+              </div>
+            </div>
+
+            <div className="card bg-base-100 shadow-xl">
+              <div className="card-body p-4">
+                <CardTitleWithInfo
+                  title={t('dashboardAnalysis.titles.vocCo2Anomaly')}
+                  info={t('dashboardAnalysis.info.vocCo2Anomaly')}
+                />
+                <div className="text-sm space-y-1">
+                  <p>{t('dashboardAnalysis.labels.co2NormalVocHigh')}: <span className="font-semibold">{advancedAnalysis.anomaly_chemical}</span></p>
+                  <p>{t('dashboardAnalysis.labels.co2HighVocHigh')}: <span className="font-semibold">{advancedAnalysis.anomaly_crowded}</span></p>
+                </div>
+              </div>
+            </div>
+
+            <div className="card bg-base-100 shadow-xl">
+              <div className="card-body p-4">
+                <CardTitleWithInfo
+                  title={t('dashboardAnalysis.titles.rollingRiskScore')}
+                  info={t('dashboardAnalysis.info.rollingRiskScore')}
+                />
+                <div className="text-sm space-y-1">
+                  <p>{t('dashboardAnalysis.labels.last15Min')}: <span className="font-semibold">{advancedAnalysis.risk15}</span></p>
+                  <p>{t('dashboardAnalysis.labels.last30Min')}: <span className="font-semibold">{advancedAnalysis.risk30}</span></p>
+                  <p className="opacity-70">{t('dashboardAnalysis.labels.weightedAverageRisk')}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
+            <AlertIndicator alerts={allAlerts} />
+          </div>
+        </>
+      )}
 
       <div className={`grid grid-cols-1 ${isAuthenticated ? 'lg:grid-cols-2' : 'lg:grid-cols-1'} gap-6`}>
         <div className="card bg-base-100 shadow-xl">
           <div className="card-body">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <h2 className="card-title text-lg">{t('trend.title')}</h2>
-              <div className="flex flex-wrap items-center gap-2">
+            <div>
+              <h2 className="card-title text-base sm:text-lg mb-2">{t('trend.title')}</h2>
+              <div className="flex flex-wrap items-center gap-1.5">
                 {/* Time range inputs */}
                 <div className="flex items-center gap-1">
                   <input
                     type="time"
                     value={startTime}
                     onChange={e => setStartTime(e.target.value)}
-                    className={`input input-bordered input-xs w-28 ${
+                    className={`input input-bordered input-xs w-[5.4rem] sm:w-24 ${
                       timeRangeError ? 'input-error' : ''
                     }`}
                     disabled={histLoading}
@@ -365,7 +425,7 @@ const Dashboard = () => {
                     type="time"
                     value={endTime}
                     onChange={e => setEndTime(e.target.value)}
-                    className={`input input-bordered input-xs w-28 ${
+                    className={`input input-bordered input-xs w-[5.4rem] sm:w-24 ${
                       timeRangeError ? 'input-error' : ''
                     }`}
                     disabled={histLoading}
@@ -376,7 +436,7 @@ const Dashboard = () => {
                   {TREND_PERIODS.map(p => (
                     <button
                       key={p}
-                      className={`join-item btn btn-xs ${
+                      className={`join-item btn btn-xs px-2 ${
                         trendPeriod === p ? 'btn-primary' : 'btn-outline'
                       }`}
                       onClick={() => setTrendPeriod(p)}
@@ -386,23 +446,25 @@ const Dashboard = () => {
                     </button>
                   ))}
                 </div>
-                <button
-                  className="btn btn-primary btn-xs"
-                  onClick={handleApply}
-                  disabled={histLoading || !isDirty}
-                >
-                  {histLoading
-                    ? <RefreshCw className="w-3 h-3 animate-spin" />
-                    : t('trend.apply')}
-                </button>
-                <button
-                  className="btn btn-ghost btn-xs"
-                  onClick={fetchHistoricalData}
-                  disabled={histLoading}
-                  title="Yenile"
-                >
-                  <RefreshCw className={`w-4 h-4 ${histLoading ? 'animate-spin' : ''}`} />
-                </button>
+                <div className="join">
+                  <button
+                    className="join-item btn btn-primary btn-xs"
+                    onClick={handleApply}
+                    disabled={histLoading || !isDirty}
+                  >
+                    {histLoading
+                      ? <RefreshCw className="w-3 h-3 animate-spin" />
+                      : t('trend.apply')}
+                  </button>
+                  <button
+                    className="join-item btn btn-ghost btn-xs"
+                    onClick={fetchHistoricalData}
+                    disabled={histLoading}
+                    title={t('actions.refresh')}
+                  >
+                    <RefreshCw className={`w-4 h-4 ${histLoading ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
               </div>
             </div>
             {timeRangeError && (

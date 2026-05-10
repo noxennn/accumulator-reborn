@@ -27,7 +27,9 @@ const PM25Indicator: React.FC<PM25IndicatorProps> = ({ value, timestamp, stats }
               />
             </div>
           </div>
-          <div className="text-2xl font-bold">{Math.round(value)} μg/m³</div>
+          <div className="text-2xl font-bold leading-none">
+            {Math.round(value)} <span className="text-sm font-semibold opacity-70">μg/m³</span>
+          </div>
         </div>
         {stats && <StatsRow stats={stats} unit="μg/m³" precision={1} />}
       </div>

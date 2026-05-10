@@ -171,6 +171,45 @@
     "minSuffix": " dk",
     "focused": "odaklandı"
   },
+  "dashboardAnalysis": {
+    "titles": {
+      "exceedanceDuration": "Exceedance Süresi",
+      "peakRecovery": "Peak + Recovery",
+      "ventilationEfficiency": "Ventilation Etkinliği",
+      "vocCo2Anomaly": "VOC/CO₂ Anomali",
+      "rollingRiskScore": "Rolling Risk Score"
+    },
+    "info": {
+      "exceedanceDuration": "Seçilen zaman aralığında değerlerin eşik üstünde kaldığı toplam süre (dakika).",
+      "peakRecovery": "En yüksek eşik aşımı sonrası ölçümün yeniden eşik altına dönme süresi.",
+      "ventilationEfficiency": "Son verilerde d(CO₂)/dt eğimi. Pozitif eğim havalandırmanın zayıf, negatif eğim daha etkili olduğunu gösterir.",
+      "vocCo2Anomaly": "CO₂ normal + VOC yüksek olursa kimyasal kaynak olasılığı; ikisi birlikte yüksekse kalabalık/havalandırma sorunu olasılığı artar.",
+      "rollingRiskScore": "Son 15/30 dakikadaki ağırlıklı ortalama risk. Tekil piki yumuşatıp daha stabil risk görünümü sağlar."
+    },
+    "labels": {
+      "peak": "Tepe",
+      "recovery": "Normale dönüş",
+      "notRecovered": "Henüz dönmedi",
+      "noPeakExceedance": "Bu aralıkta tepe aşımı yok.",
+      "co2Slope": "d(CO₂)/dt",
+      "co2NormalVocHigh": "CO₂ normal + VOC yüksek",
+      "co2HighVocHigh": "CO₂ yüksek + VOC yüksek",
+      "last15Min": "Son 15 dk",
+      "last30Min": "Son 30 dk",
+      "weightedAverageRisk": "Ağırlıklı ortalama risk",
+      "insufficientData": "Yetersiz veri"
+    },
+    "ventilation": {
+      "weak": "Havalandırma zayıf",
+      "rising": "CO₂ yükseliyor",
+      "effective": "Havalandırma etkili",
+      "balanced": "Dengeli"
+    },
+    "units": {
+      "minuteShort": "dk",
+      "ppmPerMinute": "ppm/dk"
+    }
+  },
   "watch": {
     "title": "Canlı İzleme",
     "connected": "Bağlı",

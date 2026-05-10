@@ -42,6 +42,41 @@ export interface AnalyticsReportResponse {
   statistics: Record<string, AnalyticsMetricReport>;
 }
 
+export interface DashboardAdvancedAnalysis {
+  duration_by_metric: {
+    co2: number;
+    voc: number;
+    pm25: number;
+    pm10: number;
+  };
+  peak: {
+    metric: 'co2' | 'voc' | 'pm25' | 'pm10';
+    value: number;
+    timestamp: string;
+  } | null;
+  recovery_minutes: number | null;
+  co2_slope_per_minute: number;
+  ventilation_label_key: 'insufficientData' | 'weak' | 'rising' | 'effective' | 'balanced';
+  anomaly_chemical: number;
+  anomaly_crowded: number;
+  risk15: number;
+  risk30: number;
+}
+
+export interface DashboardAnalysisResponse {
+  start: string;
+  end: string;
+  period: string;
+  thresholds: {
+    co2: number;
+    pm25: number;
+    pm10: number;
+    voc: number;
+  };
+  aqi: number;
+  advanced: DashboardAdvancedAnalysis;
+}
+
 export const analyticsApi = {
   async getAggregatedData(start: string, end: string, period: string) {
     const url = `${API_URL}/air/sensors/aggregated?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&period=${period}`;
@@ -54,6 +89,13 @@ export const analyticsApi = {
     const url = `${API_URL}/air/analytics/report?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&period=${period}`;
     const response = await fetchWithAuth(url);
     if (!response.ok) throw new Error('Failed to fetch analytics report');
+    return response.json();
+  },
+
+  async getDashboardAnalysis(start: string, end: string, period: string): Promise<DashboardAnalysisResponse> {
+    const url = `${API_URL}/air/dashboard/analysis?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&period=${period}`;
+    const response = await fetchWithAuth(url);
+    if (!response.ok) throw new Error('Failed to fetch dashboard analysis');
     return response.json();
   },
 

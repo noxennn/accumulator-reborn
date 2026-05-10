@@ -159,3 +159,30 @@ class AnalyticsReportResponse(BaseModel):
     point_count: int
     points: list[AnalyticsReportPoint]
     statistics: dict[str, AnalyticsMetricStats]
+
+
+class DashboardPeak(BaseModel):
+    metric: str
+    value: float
+    timestamp: str
+
+
+class DashboardAdvancedAnalysis(BaseModel):
+    duration_by_metric: dict[str, float]
+    peak: Optional[DashboardPeak]
+    recovery_minutes: Optional[float]
+    co2_slope_per_minute: float
+    ventilation_label_key: str
+    anomaly_chemical: int
+    anomaly_crowded: int
+    risk15: float
+    risk30: float
+
+
+class DashboardAnalysisResponse(BaseModel):
+    start: str
+    end: str
+    period: str
+    thresholds: dict[str, float]
+    aqi: int
+    advanced: DashboardAdvancedAnalysis

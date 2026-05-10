@@ -171,6 +171,45 @@
     "minSuffix": " min",
     "focused": "focused"
   },
+  "dashboardAnalysis": {
+    "titles": {
+      "exceedanceDuration": "Exceedance Duration",
+      "peakRecovery": "Peak + Recovery",
+      "ventilationEfficiency": "Ventilation Efficiency",
+      "vocCo2Anomaly": "VOC/CO₂ Anomaly",
+      "rollingRiskScore": "Rolling Risk Score"
+    },
+    "info": {
+      "exceedanceDuration": "Total duration (minutes) that values stayed above threshold in the selected time window.",
+      "peakRecovery": "Time needed to return below threshold after the highest exceedance.",
+      "ventilationEfficiency": "Recent d(CO₂)/dt slope. Positive slope indicates weaker ventilation, negative slope indicates better ventilation.",
+      "vocCo2Anomaly": "If CO₂ is normal and VOC is high, chemical source likelihood increases; if both are high, crowding/ventilation issue likelihood increases.",
+      "rollingRiskScore": "Weighted average risk over the last 15/30 minutes, smoothing short spikes for a more stable risk view."
+    },
+    "labels": {
+      "peak": "Peak",
+      "recovery": "Recovery",
+      "notRecovered": "Not recovered yet",
+      "noPeakExceedance": "No peak exceedance in this interval.",
+      "co2Slope": "d(CO₂)/dt",
+      "co2NormalVocHigh": "CO₂ normal + VOC high",
+      "co2HighVocHigh": "CO₂ high + VOC high",
+      "last15Min": "Last 15 min",
+      "last30Min": "Last 30 min",
+      "weightedAverageRisk": "Weighted average risk",
+      "insufficientData": "Insufficient data"
+    },
+    "ventilation": {
+      "weak": "Ventilation is weak",
+      "rising": "CO₂ is rising",
+      "effective": "Ventilation is effective",
+      "balanced": "Balanced"
+    },
+    "units": {
+      "minuteShort": "min",
+      "ppmPerMinute": "ppm/min"
+    }
+  },
   "watch": {
     "title": "Live Watch",
     "connected": "Connected",

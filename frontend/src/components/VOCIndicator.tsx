@@ -27,7 +27,9 @@ const VOCIndicator: React.FC<VOCIndicatorProps> = ({ value, timestamp, stats }) 
               />
             </div>
           </div>
-          <div className="text-2xl font-bold">{value.toFixed(2)} ppm</div>
+          <div className="text-2xl font-bold leading-none">
+            {value.toFixed(2)} <span className="text-sm font-semibold opacity-70">ppm</span>
+          </div>
         </div>
         {stats && <StatsRow stats={stats} unit="ppb" precision={2} />}
       </div>
