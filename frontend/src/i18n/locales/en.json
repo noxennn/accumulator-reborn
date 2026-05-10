@@ -213,6 +213,7 @@
   "watch": {
     "title": "Live Watch",
     "connected": "Connected",
+    "connecting": "Connecting",
     "disconnected": "Disconnected",
     "liveData": "Live Data",
     "latestTen": "Latest 10 rows",

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceArea } from 'recharts';
 import { useTranslation } from 'react-i18next';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, AlarmClock, TrendingUp, Activity, FlaskConical, ShieldAlert } from 'lucide-react';
 
 import AQIIndicator from '../components/AQIIndicator';
 import CO2Indicator from '../components/CO2Indicator';
@@ -36,8 +36,17 @@ const TREND_PERIODS = ['5m', '15m', '30m', '1h', '2h'];
 const toHHMM = (d: Date) =>
   `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
-const CardTitleWithInfo = ({ title, info }: { title: string; info: string }) => (
+const CardTitleWithInfo = ({
+  title,
+  info,
+  icon: Icon,
+}: {
+  title: string;
+  info: string;
+  icon: React.ComponentType<{ className?: string }>;
+}) => (
   <div className="flex items-center gap-1.5">
+    <Icon className="w-4 h-4 text-primary/80" />
     <h3 className="card-title text-base">{title}</h3>
     <InfoTooltip title={title} description={info} />
   </div>
@@ -316,6 +325,7 @@ const Dashboard = () => {
                 <CardTitleWithInfo
                   title={t('dashboardAnalysis.titles.exceedanceDuration')}
                   info={t('dashboardAnalysis.info.exceedanceDuration')}
+                  icon={AlarmClock}
                 />
                 <div className="text-sm space-y-1 font-mono">
                   <p>{t('sensors.co2')}: {advancedAnalysis.duration_by_metric.co2} {t('dashboardAnalysis.units.minuteShort')}</p>
@@ -331,6 +341,7 @@ const Dashboard = () => {
                 <CardTitleWithInfo
                   title={t('dashboardAnalysis.titles.peakRecovery')}
                   info={t('dashboardAnalysis.info.peakRecovery')}
+                  icon={TrendingUp}
                 />
                 {advancedAnalysis.peak ? (
                   <div className="text-sm space-y-1">
@@ -358,6 +369,7 @@ const Dashboard = () => {
                 <CardTitleWithInfo
                   title={t('dashboardAnalysis.titles.ventilationEfficiency')}
                   info={t('dashboardAnalysis.info.ventilationEfficiency')}
+                  icon={Activity}
                 />
                 <p className="text-sm opacity-70">{t('dashboardAnalysis.labels.co2Slope')}</p>
                 <p className="text-2xl font-bold">{advancedAnalysis.co2_slope_per_minute} {t('dashboardAnalysis.units.ppmPerMinute')}</p>
@@ -374,6 +386,7 @@ const Dashboard = () => {
                 <CardTitleWithInfo
                   title={t('dashboardAnalysis.titles.vocCo2Anomaly')}
                   info={t('dashboardAnalysis.info.vocCo2Anomaly')}
+                  icon={FlaskConical}
                 />
                 <div className="text-sm space-y-1">
                   <p>{t('dashboardAnalysis.labels.co2NormalVocHigh')}: <span className="font-semibold">{advancedAnalysis.anomaly_chemical}</span></p>
@@ -387,6 +400,7 @@ const Dashboard = () => {
                 <CardTitleWithInfo
                   title={t('dashboardAnalysis.titles.rollingRiskScore')}
                   info={t('dashboardAnalysis.info.rollingRiskScore')}
+                  icon={ShieldAlert}
                 />
                 <div className="text-sm space-y-1">
                   <p>{t('dashboardAnalysis.labels.last15Min')}: <span className="font-semibold">{advancedAnalysis.risk15}</span></p>

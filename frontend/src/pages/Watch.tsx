@@ -68,7 +68,7 @@ function aggregateFieldCounts(series?: WatchPeriodSeries) {
 
 export default function Watch() {
   const { t } = useTranslation();
-  const { dataBuffer, logsBuffer, invalidBuffer, isConnected, error, arduinoStatus } = useWebSocketData();
+  const { dataBuffer, logsBuffer, invalidBuffer, isConnected, isConnecting, error, arduinoStatus } = useWebSocketData();
   const [periodSeries, setPeriodSeries] = useState<Record<SummaryPeriod, WatchPeriodSeries> | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -171,19 +171,19 @@ export default function Watch() {
         </div>
         <div
           className={`badge badge-lg gap-2 ${
-            isConnected ? 'badge-success' : 'badge-error'
+            isConnected ? 'badge-success' : isConnecting ? 'badge-warning' : 'badge-error'
           }`}
         >
           <span
             className={`inline-block w-2 h-2 rounded-full animate-pulse ${
-              isConnected ? 'bg-green-200' : 'bg-red-200'
+              isConnected ? 'bg-green-200' : isConnecting ? 'bg-yellow-200' : 'bg-red-200'
             }`}
           />
-          {isConnected ? t('watch.connected') : t('watch.disconnected')}
+          {isConnected ? t('watch.connected') : isConnecting ? t('watch.connecting') : t('watch.disconnected')}
         </div>
       </div>
 
-      {error && (
+      {error && !isConnecting && (
         <div className="alert alert-error text-sm py-2">{error}</div>
       )}
 
