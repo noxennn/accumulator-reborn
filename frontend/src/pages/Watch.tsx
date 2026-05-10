@@ -127,6 +127,25 @@ export default function Watch() {
 
   const chartAnimationEnabled = dataBuffer.length <= MAX_POINTS;
 
+  const estimatedIntervalSeconds = useMemo(() => {
+    if (dataBuffer.length < 3) return null;
+
+    const tail = dataBuffer.slice(-6);
+    const diffs: number[] = [];
+
+    for (let i = 1; i < tail.length; i += 1) {
+      const current = new Date(tail[i].timestamp).getTime();
+      const previous = new Date(tail[i - 1].timestamp).getTime();
+      const diff = current - previous;
+      if (diff > 0) diffs.push(diff);
+    }
+
+    if (diffs.length === 0) return null;
+
+    const averageMs = diffs.reduce((sum, d) => sum + d, 0) / diffs.length;
+    return Math.max(1, Math.round(averageMs / 1000));
+  }, [dataBuffer]);
+
   const chartData = useMemo(
     () =>
       dataBuffer.slice(-MAX_POINTS).map(p => ({
@@ -168,7 +187,7 @@ export default function Watch() {
         <div className="alert alert-error text-sm py-2">{error}</div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card bg-base-200/80 shadow-sm border border-base-300">
           <div className="card-body p-4">
             <p className="text-xs uppercase tracking-wide opacity-60">{t('watch.arduinoFirstConnected')}</p>
@@ -186,6 +205,14 @@ export default function Watch() {
               {arduinoStatus.last_disconnected
                 ? format(new Date(arduinoStatus.last_disconnected), 'dd.MM.yyyy HH:mm:ss')
                 : '-'}
+            </p>
+          </div>
+        </div>
+        <div className="card bg-base-200/80 shadow-sm border border-base-300">
+          <div className="card-body p-4">
+            <p className="text-xs uppercase tracking-wide opacity-60">{t('watch.samplingRate')}</p>
+            <p className="text-sm font-semibold leading-snug mt-1 font-mono">
+              {estimatedIntervalSeconds ? `${estimatedIntervalSeconds}s` : '-'}
             </p>
           </div>
         </div>

@@ -27,6 +27,14 @@ const AQIIndicator: React.FC<AQIIndicatorProps> = ({ value, timestamp }) => {
     return t('aqi.levels.hazardous');
   };
 
+  const getAQIDescription = (aqi: number) => {
+    if (aqi <= 50) return t('aqi.description.good');
+    if (aqi <= 100) return t('aqi.description.moderate');
+    if (aqi <= 150) return t('aqi.description.poor');
+    if (aqi <= 200) return t('aqi.description.veryPoor');
+    return t('aqi.description.hazardous');
+  };
+
   // Değeri yuvarla ve maksimum 3 basamakla sınırla
   const displayValue = Math.min(Math.round(value), 999);
 
@@ -40,7 +48,7 @@ const AQIIndicator: React.FC<AQIIndicatorProps> = ({ value, timestamp }) => {
               <h2 className="card-title text-lg">{t('aqi.title')}</h2>
               <InfoTooltip
                 title={t('aqi.title')}
-                description={t('aqi.description')}
+                description={getAQIDescription(value)}
                 optimalRange="0-50"
                 timestamp={timestamp}
               />

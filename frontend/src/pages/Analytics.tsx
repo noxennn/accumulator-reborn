@@ -125,11 +125,6 @@ const Analytics = () => {
     { id: 'voc',  name: t('sensors.voc'),  color: '#ff8042', unit: t('units.voc') },
   ];
 
-  const getExportReport = useCallback(async (): Promise<AnalyticsReportResponse> => {
-    const { start, end } = getDateRange();
-    return analyticsApi.getAnalyticsReport(start, end, period);
-  }, [getDateRange, period]);
-
   // ── Tarih aralığını hesapla ───────────────────────────────────────
   const getDateRange = useCallback(() => {
     const end = new Date();
@@ -146,6 +141,11 @@ const Analytics = () => {
     start.setHours(0, 0, 0);
     return { start: toISO(start), end: toISO(end) };
   }, [datePreset, customStart, customEnd]);
+
+  const getExportReport = useCallback(async (): Promise<AnalyticsReportResponse> => {
+    const { start, end } = getDateRange();
+    return analyticsApi.getAnalyticsReport(start, end, period);
+  }, [getDateRange, period]);
 
   // ── Veri çek ─────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
