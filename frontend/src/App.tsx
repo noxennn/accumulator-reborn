@@ -10,7 +10,7 @@ import Watch from './pages/Watch';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import { useAuth } from './hooks/useAuth';
-import { LogOut, LogIn, UserPlus, LayoutDashboard, LineChart, Activity, Wind } from 'lucide-react';
+import { LogOut, LogIn, UserPlus, LayoutDashboard, LineChart, Activity, Wind, Settings as SettingsIcon } from 'lucide-react';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, loading } = useAuth();
@@ -92,11 +92,19 @@ const NAV_ITEMS = [
 
 const MobileNav = () => {
   const { t } = useTranslation();
+  const { isAuthenticated } = useAuth();
+
+  const navItems = isAuthenticated
+    ? [...NAV_ITEMS, { to: '/settings', icon: SettingsIcon, label: 'settings' as const }]
+    : NAV_ITEMS;
 
   return (
     <nav className="lg:hidden fixed left-3 right-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 rounded-2xl border border-base-300/80 bg-base-200/90 shadow-[0_10px_35px_-12px_rgba(0,0,0,0.45)] backdrop-blur supports-[backdrop-filter]:bg-base-200/80">
-      <div className="grid grid-cols-3 p-1">
-        {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
+      <div
+        className="grid p-1"
+        style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
+      >
+        {navItems.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
