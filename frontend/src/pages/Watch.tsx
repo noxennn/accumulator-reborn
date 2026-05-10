@@ -127,25 +127,6 @@ export default function Watch() {
 
   const chartAnimationEnabled = dataBuffer.length <= MAX_POINTS;
 
-  const estimatedIntervalSeconds = useMemo(() => {
-    if (dataBuffer.length < 3) return null;
-
-    const tail = dataBuffer.slice(-6);
-    const diffs: number[] = [];
-
-    for (let i = 1; i < tail.length; i += 1) {
-      const current = new Date(tail[i].timestamp).getTime();
-      const previous = new Date(tail[i - 1].timestamp).getTime();
-      const diff = current - previous;
-      if (diff > 0) diffs.push(diff);
-    }
-
-    if (diffs.length === 0) return null;
-
-    const averageMs = diffs.reduce((sum, d) => sum + d, 0) / diffs.length;
-    return Math.max(1, Math.round(averageMs / 1000));
-  }, [dataBuffer]);
-
   const chartData = useMemo(
     () =>
       dataBuffer.slice(-MAX_POINTS).map(p => ({
@@ -187,70 +168,25 @@ export default function Watch() {
         <div className="alert alert-error text-sm py-2">{error}</div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="card bg-base-200/80 shadow-sm border border-base-300">
           <div className="card-body p-4">
-            <p className="text-xs uppercase tracking-wide opacity-60">{t('watch.points')}</p>
-            <p className="text-2xl font-semibold leading-none mt-1">{dataBuffer.length}</p>
-          </div>
-        </div>
-        <div className="card bg-base-200/80 shadow-sm border border-base-300">
-          <div className="card-body p-4">
-            <p className="text-xs uppercase tracking-wide opacity-60">{t('watch.chartWindow')}</p>
-            <p className="text-2xl font-semibold leading-none mt-1">{t('watch.last50')}</p>
-          </div>
-        </div>
-        <div className="card bg-base-200/80 shadow-sm border border-base-300">
-          <div className="card-body p-4">
-            <p className="text-xs uppercase tracking-wide opacity-60">{t('watch.samplingRate')}</p>
-            <p className="text-2xl font-semibold leading-none mt-1">
-              {estimatedIntervalSeconds ? `${estimatedIntervalSeconds}s` : '-'}
+            <p className="text-xs uppercase tracking-wide opacity-60">{t('watch.arduinoFirstConnected')}</p>
+            <p className="text-sm font-semibold leading-snug mt-1 font-mono">
+              {arduinoStatus.first_connected
+                ? format(new Date(arduinoStatus.first_connected), 'dd.MM.yyyy HH:mm:ss')
+                : '-'}
             </p>
           </div>
         </div>
-      </div>
-
-      {/* Arduino Connection Status Card */}
-      <div className="card bg-base-200 shadow border border-base-300">
-        <div className="card-body p-4">
-          <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-            <h2 className="card-title text-base">{t('watch.arduinoStatus')}</h2>
-            <div
-              className={`badge badge-md gap-1.5 ${
-                arduinoStatus.is_connected ? 'badge-success' : 'badge-error'
-              }`}
-            >
-              <span
-                className={`inline-block w-1.5 h-1.5 rounded-full ${
-                  arduinoStatus.is_connected ? 'animate-pulse bg-green-200' : 'bg-red-200'
-                }`}
-              />
-              {arduinoStatus.is_connected
-                ? t('watch.arduinoConnected')
-                : t('watch.arduinoDisconnected')}
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="rounded-lg bg-base-100/70 p-3">
-              <p className="text-[10px] uppercase tracking-wide opacity-60 mb-1">
-                {t('watch.arduinoFirstConnected')}
-              </p>
-              <p className="font-mono text-sm font-semibold">
-                {arduinoStatus.first_connected
-                  ? format(new Date(arduinoStatus.first_connected), 'dd.MM.yyyy HH:mm:ss')
-                  : '-'}
-              </p>
-            </div>
-            <div className="rounded-lg bg-base-100/70 p-3">
-              <p className="text-[10px] uppercase tracking-wide opacity-60 mb-1">
-                {t('watch.arduinoLastDisconnected')}
-              </p>
-              <p className={`font-mono text-sm font-semibold ${arduinoStatus.last_disconnected && !arduinoStatus.is_connected ? 'text-error' : ''}`}>
-                {arduinoStatus.last_disconnected
-                  ? format(new Date(arduinoStatus.last_disconnected), 'dd.MM.yyyy HH:mm:ss')
-                  : '-'}
-              </p>
-            </div>
+        <div className="card bg-base-200/80 shadow-sm border border-base-300">
+          <div className="card-body p-4">
+            <p className="text-xs uppercase tracking-wide opacity-60">{t('watch.arduinoLastDisconnected')}</p>
+            <p className={`text-sm font-semibold leading-snug mt-1 font-mono ${arduinoStatus.last_disconnected && !arduinoStatus.is_connected ? 'text-error' : ''}`}>
+              {arduinoStatus.last_disconnected
+                ? format(new Date(arduinoStatus.last_disconnected), 'dd.MM.yyyy HH:mm:ss')
+                : '-'}
+            </p>
           </div>
         </div>
       </div>
@@ -402,10 +338,6 @@ export default function Watch() {
             </table>
           </div>
         </div>
-      </div>
-
-      <div className="text-xs opacity-60">
-        {t('watch.last50Hint')}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

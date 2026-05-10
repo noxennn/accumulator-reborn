@@ -13,11 +13,47 @@ export interface SensorStatistics {
   max_time: string | null;
 }
 
+export interface AnalyticsDataPoint {
+  timestamp: string;
+  co2: number | null;
+  voc: number | null;
+  pm25: number | null;
+  pm10: number | null;
+  sample_count: number;
+}
+
+export interface AnalyticsMetricReport {
+  metric: string;
+  min: number | null;
+  max: number | null;
+  avg: number | null;
+  stddev: number | null;
+  min_time: string | null;
+  max_time: string | null;
+}
+
+export interface AnalyticsReportResponse {
+  start: string;
+  end: string;
+  period: string;
+  period_seconds: number;
+  point_count: number;
+  points: AnalyticsDataPoint[];
+  statistics: Record<string, AnalyticsMetricReport>;
+}
+
 export const analyticsApi = {
   async getAggregatedData(start: string, end: string, period: string) {
     const url = `${API_URL}/air/sensors/aggregated?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&period=${period}`;
     const response = await fetchWithAuth(url);
     if (!response.ok) throw new Error('Failed to fetch aggregated data');
+    return response.json();
+  },
+
+  async getAnalyticsReport(start: string, end: string, period: string): Promise<AnalyticsReportResponse> {
+    const url = `${API_URL}/air/analytics/report?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&period=${period}`;
+    const response = await fetchWithAuth(url);
+    if (!response.ok) throw new Error('Failed to fetch analytics report');
     return response.json();
   },
 
@@ -49,11 +85,17 @@ export const analyticsApi = {
   
   // Format statistics for presentation
   formatStats(stats: SensorStatistics) {
+    const formatNumber = (value: number | null | undefined, digits = 1) => (
+      value === null || value === undefined || Number.isNaN(Number(value))
+        ? '-'
+        : Number(value).toFixed(digits)
+    );
+
     return {
-      min: Number(stats.min).toFixed(1),
-      max: Number(stats.max).toFixed(1),
-      avg: Number(stats.avg).toFixed(1),
-      std: Number(stats.stddev).toFixed(1)
+      min: formatNumber(stats.min),
+      max: formatNumber(stats.max),
+      avg: formatNumber(stats.avg),
+      std: formatNumber(stats.stddev)
     };
   }
 };

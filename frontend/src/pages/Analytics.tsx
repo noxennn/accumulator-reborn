@@ -10,7 +10,7 @@ import { tr, enUS, type Locale } from 'date-fns/locale';
 import { FileText, FileDown, RefreshCw, Table } from 'lucide-react';
 import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
-import { analyticsApi } from '../lib/analyticsApi';
+import { analyticsApi, type AnalyticsReportResponse } from '../lib/analyticsApi';
 import { sensorApi } from '../lib/sensorApi';
 import { authApi } from '../lib/api';
 
@@ -69,6 +69,20 @@ const tooltipFormatter = (value: number, name: string) => [
   name,
 ];
 
+const exportNumber = (value: number | null | undefined, digits = 1) => (
+  value === null || value === undefined || Number.isNaN(Number(value))
+    ? '-'
+    : Number(value).toFixed(digits)
+);
+
+const exportDate = (ts: string, locale: Locale): string => {
+  try {
+    return format(new Date(ts), 'dd MMM yyyy HH:mm:ss', { locale });
+  } catch {
+    return ts;
+  }
+};
+
 // ── Bileşen ─────────────────────────────────────────────────────────
 
 const Analytics = () => {
@@ -110,6 +124,11 @@ const Analytics = () => {
     { id: 'pm10', name: t('sensors.pm10'), color: '#ffc658', unit: t('units.pm')  },
     { id: 'voc',  name: t('sensors.voc'),  color: '#ff8042', unit: t('units.voc') },
   ];
+
+  const getExportReport = useCallback(async (): Promise<AnalyticsReportResponse> => {
+    const { start, end } = getDateRange();
+    return analyticsApi.getAnalyticsReport(start, end, period);
+  }, [getDateRange, period]);
 
   // ── Tarih aralığını hesapla ───────────────────────────────────────
   const getDateRange = useCallback(() => {
@@ -193,58 +212,113 @@ const Analytics = () => {
     load();
   }, [selectedMetrics, data, loading]);
 
-  // ── Dışa aktarma yardımcısı: istatistikleri doğrudan veri dizisinden hesapla ──
-  const getExportStats = (id: string) => {
-    const vals = data.map(d => d[id]).filter(v => v !== null && v !== undefined).map(Number).filter(v => !Number.isNaN(v));
-    if (!vals.length) return { min: '-', max: '-', avg: '-', std: '-' };
-    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-    const std = Math.sqrt(vals.reduce((a, b) => a + (b - avg) ** 2, 0) / vals.length);
-    return {
-      min: Math.min(...vals).toFixed(1),
-      max: Math.max(...vals).toFixed(1),
-      avg: avg.toFixed(1),
-      std: std.toFixed(1),
-    };
+  const buildReportLines = (report: AnalyticsReportResponse) => {
+    const lines: string[] = [];
+    lines.push('Hava Kalitesi Raporu');
+    lines.push(`Tarih Aralığı: ${exportDate(report.start, dateLocale)} - ${exportDate(report.end, dateLocale)}`);
+    lines.push(`Periyot: ${t(`trend.periods.${report.period}`, report.period)}`);
+    lines.push(`Veri Noktası: ${report.point_count}`);
+    lines.push('');
+
+    lines.push('İstatistikler');
+    ['co2', 'voc', 'pm25', 'pm10'].forEach(metricId => {
+      const metric = metrics.find(item => item.id === metricId);
+      const stat = report.statistics[metricId];
+      if (!metric || !stat) return;
+      lines.push(`${metric.name} (${metric.unit})`);
+      lines.push(`  Minimum: ${exportNumber(stat.min)}`);
+      lines.push(`  Maksimum: ${exportNumber(stat.max)}`);
+      lines.push(`  Ortalama: ${exportNumber(stat.avg)}`);
+      lines.push(`  Standart Sapma: ${exportNumber(stat.stddev)}`);
+      lines.push('');
+    });
+
+    lines.push('Veri Tablosu');
+    lines.push(['Tarih', 'CO2', 'VOC', 'PM2.5', 'PM10', 'Örnek Sayısı'].join('\t'));
+    report.points.forEach(point => {
+      lines.push([
+        exportDate(point.timestamp, dateLocale),
+        exportNumber(point.co2),
+        exportNumber(point.voc),
+        exportNumber(point.pm25),
+        exportNumber(point.pm10),
+        String(point.sample_count),
+      ].join('\t'));
+    });
+
+    return lines.join('\n');
   };
 
   // ── TXT indir ────────────────────────────────────────────────────
-  const downloadReport = () => {
-    const { start, end } = getDateRange();
-    const header = `Hava Kalitesi Raporu\nTarih: ${start.slice(0, 10)} - ${end.slice(0, 10)}\n\n`;
-    const content = header + selectedMetrics.map(id => {
-      const m = metrics.find(x => x.id === id)!;
-      const s = getExportStats(id);
-      return `${m.name} (${m.unit})\nMin: ${s.min}  Max: ${s.max}  Ort: ${s.avg}  StdSap: ${s.std}\n`;
-    }).join('\n');
-    const a = Object.assign(document.createElement('a'), {
-      href: URL.createObjectURL(new Blob(['﻿' + content], { type: 'text/plain;charset=utf-8' })),
-      download: `air-quality-${format(new Date(), 'yyyy-MM-dd')}.txt`,
-    });
-    a.click();
-    URL.revokeObjectURL(a.href);
+  const downloadReport = async () => {
+    try {
+      const report = await getExportReport();
+      const content = buildReportLines(report);
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob(['﻿' + content], { type: 'text/plain;charset=utf-8' })),
+        download: `air-quality-${format(new Date(), 'yyyy-MM-dd')}.txt`,
+      });
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (error) {
+      console.error(error);
+      alert(t('errors.dataLoadFailed'));
+    }
   };
 
   // ── CSV indir ────────────────────────────────────────────────────
-  const downloadCSV = () => {
-    if (!data.length) return;
-    const cols = ['timestamp', ...selectedMetrics];
-    const header = cols.join(',');
-    const rows = data.map(row =>
-      cols.map(c => (row[c] !== null && row[c] !== undefined ? row[c] : '')).join(',')
-    );
-    const csv = [header, ...rows].join('\n');
-    const a = Object.assign(document.createElement('a'), {
-      href: URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })),
-      download: `air-quality-${format(new Date(), 'yyyy-MM-dd')}.csv`,
-    });
-    a.click();
-    URL.revokeObjectURL(a.href);
+  const downloadCSV = async () => {
+    try {
+      const report = await getExportReport();
+      const rows = [
+        ['Report', 'Air Quality'],
+        ['Start', report.start],
+        ['End', report.end],
+        ['Period', report.period],
+        ['Point Count', String(report.point_count)],
+        [],
+        ['metric', 'min', 'max', 'avg', 'stddev', 'min_time', 'max_time'],
+        ...['co2', 'voc', 'pm25', 'pm10'].map(metricId => {
+          const stat = report.statistics[metricId];
+          return [
+            metricId,
+            exportNumber(stat?.min),
+            exportNumber(stat?.max),
+            exportNumber(stat?.avg),
+            exportNumber(stat?.stddev),
+            stat?.min_time ?? '',
+            stat?.max_time ?? '',
+          ];
+        }),
+        [],
+        ['timestamp', 'co2', 'voc', 'pm25', 'pm10', 'sample_count'],
+        ...report.points.map(point => [
+          point.timestamp,
+          exportNumber(point.co2),
+          exportNumber(point.voc),
+          exportNumber(point.pm25),
+          exportNumber(point.pm10),
+          String(point.sample_count),
+        ]),
+      ];
+      const csv = rows.map(row => row.join(',')).join('\n');
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })),
+        download: `air-quality-${format(new Date(), 'yyyy-MM-dd')}.csv`,
+      });
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (error) {
+      console.error(error);
+      alert(t('errors.dataLoadFailed'));
+    }
   };
 
   // ── PDF indir ────────────────────────────────────────────────────
   const downloadPDF = async () => {
     if (!chartRef.current) return;
     try {
+      const report = await getExportReport();
       const container = document.createElement('div');
       Object.assign(container.style, {
         position: 'absolute', top: '-9999px', left: '-9999px',
@@ -268,41 +342,93 @@ const Analytics = () => {
       });
       document.body.removeChild(container);
 
-      // jsPDF varsayılan fontu unicode desteklemez; sorunlu karakterleri ASCII'ye çevir
       const pdfText = (text: string) =>
         text.replace(/₂/g, '2').replace(/₃/g, '3').replace(/μ/g, 'u').replace(/[^\x00-\x7F]/g, '?');
 
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pageW = 210, pageH = 297, margin = 10;
 
-      // Başlık
-      const { start, end } = getDateRange();
+      const pdfRange = `${exportDate(report.start, dateLocale)} - ${exportDate(report.end, dateLocale)}`;
+
       pdf.setFontSize(14);
-      pdf.text('Air Quality Report', margin, 15);
+      pdf.text(pdfText('Air Quality Report'), margin, 15);
       pdf.setFontSize(10);
-      pdf.text(`${start.slice(0, 10)} / ${end.slice(0, 10)}`, margin, 22);
+      pdf.text(pdfText(`Range: ${pdfRange}`), margin, 22);
+      pdf.text(pdfText(`Period: ${t(`trend.periods.${report.period}`, report.period)}`), margin, 28);
+      pdf.text(pdfText(`Points: ${report.point_count}`), margin, 34);
 
       // Grafik görseli
-      const imgY = 28;
+      const imgY = 40;
       const imgW = pageW - 2 * margin;
       const imgH = Math.min((canvas.height * imgW) / canvas.width, pageH - imgY - 60);
       pdf.addImage(canvas.toDataURL('image/png'), 'PNG', margin, imgY, imgW, imgH);
 
-      // İstatistikler
       let y = imgY + imgH + 12;
-      if (y + selectedMetrics.length * 17 > pageH - margin) {
+      if (y + 70 > pageH - margin) {
         pdf.addPage();
         y = margin + 10;
       }
       pdf.setFontSize(12);
-      pdf.text('Statistics', margin, y); y += 8;
+      pdf.text(pdfText('Statistics'), margin, y); y += 8;
       pdf.setFontSize(10);
-      selectedMetrics.forEach(id => {
+      ['co2', 'voc', 'pm25', 'pm10'].forEach(metricId => {
         if (y > pageH - 25) { pdf.addPage(); y = margin + 10; }
-        const m = metrics.find(x => x.id === id)!;
-        const s = getExportStats(id);
-        pdf.text(pdfText(`${m.name} (${m.unit})`), margin, y); y += 6;
-        pdf.text(`Min: ${s.min}  Max: ${s.max}  Avg: ${s.avg}  Std: ${s.std}`, margin + 5, y); y += 10;
+        const metric = metrics.find(item => item.id === metricId);
+        const stat = report.statistics[metricId];
+        if (!metric || !stat) return;
+        pdf.text(pdfText(`${metric.name} (${metric.unit})`), margin, y); y += 6;
+        pdf.text(pdfText(`Min: ${exportNumber(stat.min)}  Max: ${exportNumber(stat.max)}  Avg: ${exportNumber(stat.avg)}  Std: ${exportNumber(stat.stddev)}`), margin + 5, y); y += 5;
+        pdf.text(pdfText(`Min time: ${stat.min_time ?? '-'}  Max time: ${stat.max_time ?? '-'}`), margin + 5, y); y += 8;
+      });
+
+      if (y > pageH - 30) {
+        pdf.addPage();
+        y = margin + 10;
+      }
+
+      const columnWidths = [50, 24, 24, 24, 24, 24];
+      const writeTableHeader = (currentY: number) => {
+        let x = margin;
+        pdf.setFont('courier', 'bold');
+        pdf.setFontSize(8);
+        ['Timestamp', 'CO2', 'VOC', 'PM2.5', 'PM10', 'Count'].forEach((label, index) => {
+          pdf.text(pdfText(label), x, currentY);
+          x += columnWidths[index];
+        });
+        pdf.setFont('courier', 'normal');
+        return currentY + 5;
+      };
+
+      pdf.setFontSize(11);
+      pdf.text(pdfText('Data Table'), margin, y);
+      y += 8;
+      y = writeTableHeader(y);
+
+      report.points.forEach(point => {
+        if (y > pageH - margin - 6) {
+          pdf.addPage();
+          y = margin + 10;
+          pdf.setFontSize(11);
+          pdf.text(pdfText('Data Table'), margin, y);
+          y += 8;
+          y = writeTableHeader(y);
+        }
+
+        const rowValues = [
+          exportDate(point.timestamp, dateLocale),
+          exportNumber(point.co2),
+          exportNumber(point.voc),
+          exportNumber(point.pm25),
+          exportNumber(point.pm10),
+          String(point.sample_count),
+        ];
+        let x = margin;
+        pdf.setFontSize(7);
+        rowValues.forEach((value, index) => {
+          pdf.text(pdfText(value), x, y);
+          x += columnWidths[index];
+        });
+        y += 5;
       });
 
       pdf.save(`air-quality-${format(new Date(), 'yyyy-MM-dd')}.pdf`);

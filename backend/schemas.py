@@ -130,3 +130,32 @@ class WatchPeriodSeriesResponse(BaseModel):
     day: WatchPeriodSeries
     week: WatchPeriodSeries
     month: WatchPeriodSeries
+
+
+class AnalyticsReportPoint(BaseModel):
+    timestamp: str
+    co2: Optional[float]
+    voc: Optional[float]
+    pm25: Optional[float]
+    pm10: Optional[float]
+    sample_count: int
+
+
+class AnalyticsMetricStats(BaseModel):
+    metric: str
+    min: Optional[float]
+    max: Optional[float]
+    avg: Optional[float]
+    stddev: Optional[float]
+    min_time: Optional[str]
+    max_time: Optional[str]
+
+
+class AnalyticsReportResponse(BaseModel):
+    start: str
+    end: str
+    period: str
+    period_seconds: int
+    point_count: int
+    points: list[AnalyticsReportPoint]
+    statistics: dict[str, AnalyticsMetricStats]

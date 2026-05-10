@@ -156,6 +156,109 @@ def _utc_iso(dt: datetime) -> str:
     return dt.isoformat()
 
 
+def _period_seconds(period: str) -> int:
+    return {
+        "5m": 300,
+        "15m": 900,
+        "30m": 1800,
+        "1h": 3600,
+        "2h": 7200,
+        "4h": 14400,
+        "8h": 28800,
+        "12h": 43200,
+        "1d": 86400,
+    }.get(period, 3600)
+
+
+def _build_aggregated_rows(db: Session, *, start: datetime, end: datetime, period: str) -> list[dict[str, Any]]:
+    period_seconds = _period_seconds(period)
+
+    from sqlalchemy import func, text as sa_text
+
+    bucket = func.from_unixtime(
+        func.floor(func.unix_timestamp(models.ArduinoData.timestamp) / period_seconds) * period_seconds
+    )
+
+    rows = db.query(
+        bucket.label("period"),
+        func.round(func.avg(models.ArduinoData.co2), 1).label("co2"),
+        func.round(func.avg(models.ArduinoData.voc), 1).label("voc"),
+        func.round(func.avg(models.ArduinoData.pm25), 2).label("pm25"),
+        func.round(func.avg(models.ArduinoData.pm10), 2).label("pm10"),
+        func.count(models.ArduinoData.data_id).label("n"),
+    ).filter(
+        models.ArduinoData.timestamp.between(start, end)
+    ).group_by(sa_text("period")).order_by(sa_text("period")).all()
+
+    serialized_rows: list[dict[str, Any]] = []
+    for row in rows:
+        serialized_rows.append({
+            "timestamp": (
+                row.period.replace(tzinfo=timezone.utc).isoformat()
+                if hasattr(row.period, "isoformat") else str(row.period)
+            ),
+            "co2": float(row.co2) if row.co2 is not None else None,
+            "voc": float(row.voc) if row.voc is not None else None,
+            "pm25": float(row.pm25) if row.pm25 is not None else None,
+            "pm10": float(row.pm10) if row.pm10 is not None else None,
+            "sample_count": int(row.n),
+        })
+
+    return serialized_rows
+
+
+def _compute_metric_stats(db: Session, *, metric: str, start: datetime, end: datetime) -> dict[str, Any]:
+    if metric not in ["co2", "voc", "pm25", "pm10"]:
+        raise HTTPException(status_code=400, detail="Invalid metric")
+
+    from sqlalchemy import func
+    from datetime import timezone as tz
+
+    col = getattr(models.ArduinoData, metric)
+
+    result = db.query(
+        func.min(col),
+        func.max(col),
+        func.avg(col),
+        func.stddev_pop(col)
+    ).filter(models.ArduinoData.timestamp.between(start, end)).one()
+
+    min_val, max_val, avg_val, stddev_val = result
+
+    min_row = (
+        db.query(models.ArduinoData.timestamp)
+        .filter(models.ArduinoData.timestamp.between(start, end), col == min_val)
+        .order_by(models.ArduinoData.timestamp)
+        .first()
+    )
+    max_row = (
+        db.query(models.ArduinoData.timestamp)
+        .filter(models.ArduinoData.timestamp.between(start, end), col == max_val)
+        .order_by(models.ArduinoData.timestamp)
+        .first()
+    )
+
+    def _ts(row):
+        if row is None:
+            return None
+        ts = row.timestamp
+        if ts is None:
+            return None
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=tz.utc)
+        return ts.isoformat()
+
+    return {
+        "metric": metric,
+        "min": min_val,
+        "max": max_val,
+        "avg": avg_val,
+        "stddev": stddev_val,
+        "min_time": _ts(min_row),
+        "max_time": _ts(max_row),
+    }
+
+
 def _floor_bucket(dt: datetime, granularity: str) -> datetime:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
@@ -603,44 +706,31 @@ async def get_aggregated_data(
     period: str = Query(default="1h"),
     db: Session = Depends(get_db)
 ):
-    period_seconds = {
-        "5m": 300, "15m": 900, "30m": 1800,
-        "1h": 3600, "2h": 7200, "4h": 14400,
-        "8h": 28800, "12h": 43200, "1d": 86400
-    }.get(period, 3600)
+    return _build_aggregated_rows(db, start=start, end=end, period=period)
 
-    from sqlalchemy import func, text as sa_text
 
-    bucket = func.from_unixtime(
-        func.floor(func.unix_timestamp(models.ArduinoData.timestamp) / period_seconds) * period_seconds
+@app.get(f"{api_prefix}/analytics/report", response_model=schemas.AnalyticsReportResponse)
+async def get_analytics_report(
+    start: datetime,
+    end: datetime,
+    period: str = Query(default="1h"),
+    db: Session = Depends(get_db)
+):
+    points = _build_aggregated_rows(db, start=start, end=end, period=period)
+    statistics = {
+        metric: schemas.AnalyticsMetricStats(**_compute_metric_stats(db, metric=metric, start=start, end=end))
+        for metric in ["co2", "voc", "pm25", "pm10"]
+    }
+
+    return schemas.AnalyticsReportResponse(
+        start=_utc_iso(start),
+        end=_utc_iso(end),
+        period=period,
+        period_seconds=_period_seconds(period),
+        point_count=len(points),
+        points=[schemas.AnalyticsReportPoint(**point) for point in points],
+        statistics=statistics,
     )
-
-    rows = db.query(
-        bucket.label("period"),
-        func.round(func.avg(models.ArduinoData.co2),  1).label("co2"),
-        func.round(func.avg(models.ArduinoData.voc),  1).label("voc"),
-        func.round(func.avg(models.ArduinoData.pm25), 2).label("pm25"),
-        func.round(func.avg(models.ArduinoData.pm10), 2).label("pm10"),
-        func.count(models.ArduinoData.data_id).label("n")
-    ).filter(
-        models.ArduinoData.timestamp.between(start, end)
-    ).group_by(sa_text("period")).order_by(sa_text("period")).all()
-
-    from datetime import timezone as tz
-    return [
-        {
-            "timestamp": (
-                row.period.replace(tzinfo=tz.utc).isoformat()
-                if hasattr(row.period, "isoformat") else str(row.period)
-            ),
-            "co2":  float(row.co2)  if row.co2  is not None else None,
-            "voc":  float(row.voc)  if row.voc  is not None else None,
-            "pm25": float(row.pm25) if row.pm25 is not None else None,
-            "pm10": float(row.pm10) if row.pm10 is not None else None,
-            "sample_count": row.n,
-        }
-        for row in rows
-    ]
 
 
 @app.get(f"{api_prefix}/sensors/exceeded-intervals")
@@ -758,57 +848,7 @@ async def get_current_data(db: Session = Depends(get_db)):
 
 @app.get(f"{api_prefix}/stats")
 async def get_stats(metric: str, start: datetime, end: datetime, db: Session = Depends(get_db)):
-    if metric not in ["co2", "voc", "pm25", "pm10"]:
-        raise HTTPException(status_code=400, detail="Invalid metric")
-
-    from sqlalchemy import func
-    from datetime import timezone as tz
-
-    col = getattr(models.ArduinoData, metric)
-
-    result = db.query(
-        func.min(col),
-        func.max(col),
-        func.avg(col),
-        func.stddev_pop(col)
-    ).filter(models.ArduinoData.timestamp.between(start, end)).one()
-
-    min_val, max_val, avg_val, stddev_val = result
-
-    # Find the row where the metric hits its minimum
-    min_row = (
-        db.query(models.ArduinoData.timestamp)
-        .filter(models.ArduinoData.timestamp.between(start, end), col == min_val)
-        .order_by(models.ArduinoData.timestamp)
-        .first()
-    )
-    # Find the row where the metric hits its maximum
-    max_row = (
-        db.query(models.ArduinoData.timestamp)
-        .filter(models.ArduinoData.timestamp.between(start, end), col == max_val)
-        .order_by(models.ArduinoData.timestamp)
-        .first()
-    )
-
-    def _ts(row):
-        if row is None:
-            return None
-        ts = row.timestamp
-        if ts is None:
-            return None
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=tz.utc)
-        return ts.isoformat()
-
-    return {
-        "metric": metric,
-        "min": min_val,
-        "max": max_val,
-        "avg": avg_val,
-        "stddev": stddev_val,
-        "min_time": _ts(min_row),
-        "max_time": _ts(max_row),
-    }
+    return _compute_metric_stats(db, metric=metric, start=start, end=end)
 
 
 @app.get(f"{api_prefix}/settings", response_model=schemas.UserSettings)
