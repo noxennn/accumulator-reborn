@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import useSound from 'use-sound';
 
 const alertSound = '/alert.mp3';
@@ -10,16 +10,22 @@ export const useAlerts = (
 ) => {
   const [play] = useSound(alertSound);
   const [alerts, setAlerts] = useState<string[]>([]);
+  const wasAboveThresholdRef = useRef(false);
+
+  const metricLabel = type === 'co2' ? 'CO₂' : type.toUpperCase();
 
   useEffect(() => {
     if (value > threshold) {
-      play();
-      setAlerts(prev => [...prev, `${type.toUpperCase()} seviyesi eşik değerini aştı: ${value}`]);
+      if (!wasAboveThresholdRef.current) {
+        play();
+      }
+      setAlerts([`${metricLabel} seviyesi eşik değerini aştı: ${value}`]);
+      wasAboveThresholdRef.current = true;
     } else {
-      // Eşik değeri altındaysa, bu tür uyarıyı kaldır
-      setAlerts(prev => prev.filter(alert => !alert.includes(type.toUpperCase())));
+      setAlerts([]);
+      wasAboveThresholdRef.current = false;
     }
-  }, [value, threshold, type, play]);
+  }, [value, threshold, metricLabel, play]);
 
   return alerts;
 };
