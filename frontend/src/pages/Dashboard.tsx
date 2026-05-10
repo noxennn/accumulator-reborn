@@ -204,7 +204,52 @@ const Dashboard = () => {
   };
 
   const calculateAQI = (pm25: number, pm10: number) => {
-    return Math.max((pm25 / 12) * 50, (pm10 / 55) * 50);
+    const PM25_BREAKPOINTS = [
+      { cLow: 0.0, cHigh: 9.0, iLow: 0, iHigh: 50 },
+      { cLow: 9.1, cHigh: 35.4, iLow: 51, iHigh: 100 },
+      { cLow: 35.5, cHigh: 55.4, iLow: 101, iHigh: 150 },
+      { cLow: 55.5, cHigh: 125.4, iLow: 151, iHigh: 200 },
+      { cLow: 125.5, cHigh: 225.4, iLow: 201, iHigh: 300 },
+      { cLow: 225.5, cHigh: 325.4, iLow: 301, iHigh: 400 },
+      { cLow: 325.5, cHigh: 500.4, iLow: 401, iHigh: 500 },
+    ];
+
+    const PM10_BREAKPOINTS = [
+      { cLow: 0, cHigh: 54, iLow: 0, iHigh: 50 },
+      { cLow: 55, cHigh: 154, iLow: 51, iHigh: 100 },
+      { cLow: 155, cHigh: 254, iLow: 101, iHigh: 150 },
+      { cLow: 255, cHigh: 354, iLow: 151, iHigh: 200 },
+      { cLow: 355, cHigh: 424, iLow: 201, iHigh: 300 },
+      { cLow: 425, cHigh: 504, iLow: 301, iHigh: 400 },
+      { cLow: 505, cHigh: 604, iLow: 401, iHigh: 500 },
+    ];
+
+    const toSubIndex = (
+      concentration: number,
+      breakpoints: Array<{ cLow: number; cHigh: number; iLow: number; iHigh: number }>,
+      precision: number
+    ) => {
+      const c = Number.isFinite(concentration) ? Math.max(0, concentration) : 0;
+      const factor = 10 ** precision;
+      const cTruncated = Math.floor(c * factor) / factor;
+
+      const bp = breakpoints.find(({ cLow, cHigh }) => cTruncated >= cLow && cTruncated <= cHigh);
+      if (!bp) {
+        return cTruncated > breakpoints[breakpoints.length - 1].cHigh ? 500 : 0;
+      }
+
+      const subIndex =
+        ((bp.iHigh - bp.iLow) / (bp.cHigh - bp.cLow)) *
+          (cTruncated - bp.cLow) +
+        bp.iLow;
+
+      return Math.round(subIndex);
+    };
+
+    const pm25Index = toSubIndex(pm25, PM25_BREAKPOINTS, 1);
+    const pm10Index = toSubIndex(pm10, PM10_BREAKPOINTS, 0);
+
+    return Math.max(pm25Index, pm10Index);
   };
 
   const getLatestData = () => {
