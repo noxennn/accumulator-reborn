@@ -2,7 +2,7 @@ import asyncio
 import json
 from collections import deque
 import uvicorn
-from fastapi import FastAPI, HTTPException, Depends, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Depends, Query, WebSocket, WebSocketDisconnect, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,6 +56,19 @@ class ConnectionManager:
         self.recent_invalid: deque[dict] = deque(maxlen=50)
         self.recent_events:  deque[dict] = deque(maxlen=50)
 
+        # Arduino connection state
+        self.arduino_connected: bool = False
+        self.arduino_first_connected: Optional[datetime] = None
+        self.arduino_last_disconnected: Optional[datetime] = None
+
+    def get_arduino_status(self) -> dict:
+        return {
+            "type": "arduino_status",
+            "is_connected": self.arduino_connected,
+            "first_connected": _utc_iso(self.arduino_first_connected) if self.arduino_first_connected else None,
+            "last_disconnected": _utc_iso(self.arduino_last_disconnected) if self.arduino_last_disconnected else None,
+        }
+
     async def connect(self, websocket: WebSocket, thresholds: Optional[dict] = None):
         await websocket.accept()
         self.active_connections[websocket] = thresholds
@@ -69,6 +82,8 @@ class ConnectionManager:
                 await websocket.send_json(entry)
             for entry in self.recent_events:
                 await websocket.send_json(entry)
+            # Send current Arduino connection status to newly connected frontend clients.
+            await websocket.send_json(self.get_arduino_status())
         except Exception:
             self.disconnect(websocket)
 
@@ -139,6 +154,302 @@ def _utc_iso(dt: datetime) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.isoformat()
+
+
+def _period_seconds(period: str) -> int:
+    return {
+        "5m": 300,
+        "15m": 900,
+        "30m": 1800,
+        "1h": 3600,
+        "2h": 7200,
+        "4h": 14400,
+        "8h": 28800,
+        "12h": 43200,
+        "1d": 86400,
+    }.get(period, 3600)
+
+
+def _default_thresholds() -> dict[str, float]:
+    return {"co2": 1000.0, "pm25": 35.0, "pm10": 50.0, "voc": 500.0}
+
+
+def _coerce_thresholds(thresholds: Optional[dict]) -> dict[str, float]:
+    base = _default_thresholds()
+    if not isinstance(thresholds, dict):
+        return base
+
+    result = dict(base)
+    for metric in ["co2", "pm25", "pm10", "voc"]:
+        raw = thresholds.get(metric)
+        try:
+            val = float(raw)
+            if val > 0:
+                result[metric] = val
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def _extract_token_from_auth_header(auth_header: Optional[str]) -> Optional[str]:
+    if not auth_header:
+        return None
+    parts = auth_header.strip().split(" ", 1)
+    if len(parts) != 2:
+        return None
+    scheme, token = parts[0], parts[1].strip()
+    if scheme.lower() != "bearer" or not token:
+        return None
+    return token
+
+
+def _calculate_aqi(pm25: float, pm10: float) -> int:
+    pm25_breakpoints = [
+        {"cLow": 0.0, "cHigh": 9.0, "iLow": 0, "iHigh": 50},
+        {"cLow": 9.1, "cHigh": 35.4, "iLow": 51, "iHigh": 100},
+        {"cLow": 35.5, "cHigh": 55.4, "iLow": 101, "iHigh": 150},
+        {"cLow": 55.5, "cHigh": 125.4, "iLow": 151, "iHigh": 200},
+        {"cLow": 125.5, "cHigh": 225.4, "iLow": 201, "iHigh": 300},
+        {"cLow": 225.5, "cHigh": 325.4, "iLow": 301, "iHigh": 400},
+        {"cLow": 325.5, "cHigh": 500.4, "iLow": 401, "iHigh": 500},
+    ]
+    pm10_breakpoints = [
+        {"cLow": 0, "cHigh": 54, "iLow": 0, "iHigh": 50},
+        {"cLow": 55, "cHigh": 154, "iLow": 51, "iHigh": 100},
+        {"cLow": 155, "cHigh": 254, "iLow": 101, "iHigh": 150},
+        {"cLow": 255, "cHigh": 354, "iLow": 151, "iHigh": 200},
+        {"cLow": 355, "cHigh": 424, "iLow": 201, "iHigh": 300},
+        {"cLow": 425, "cHigh": 504, "iLow": 301, "iHigh": 400},
+        {"cLow": 505, "cHigh": 604, "iLow": 401, "iHigh": 500},
+    ]
+
+    def _to_sub_index(concentration: float, breakpoints: list[dict], precision: int) -> int:
+        c = max(0.0, float(concentration)) if concentration is not None else 0.0
+        factor = 10 ** precision
+        c_truncated = int(c * factor) / factor
+
+        bp = next((b for b in breakpoints if b["cLow"] <= c_truncated <= b["cHigh"]), None)
+        if not bp:
+            return 500 if c_truncated > breakpoints[-1]["cHigh"] else 0
+
+        sub_index = ((bp["iHigh"] - bp["iLow"]) / (bp["cHigh"] - bp["cLow"])) * (c_truncated - bp["cLow"]) + bp["iLow"]
+        return int(round(sub_index))
+
+    return max(_to_sub_index(pm25, pm25_breakpoints, 1), _to_sub_index(pm10, pm10_breakpoints, 0))
+
+
+def _build_dashboard_advanced(points: list[dict[str, Any]], thresholds: dict[str, float], period: str) -> dict[str, Any]:
+    metric_keys = ["co2", "voc", "pm25", "pm10"]
+
+    normalized: list[dict[str, Any]] = []
+    for row in points:
+        try:
+            ts = datetime.fromisoformat(str(row["timestamp"]).replace("Z", "+00:00"))
+            normalized.append({
+                "ts": ts,
+                "iso": _utc_iso(ts),
+                "co2": float(row["co2"]) if row.get("co2") is not None else None,
+                "voc": float(row["voc"]) if row.get("voc") is not None else None,
+                "pm25": float(row["pm25"]) if row.get("pm25") is not None else None,
+                "pm10": float(row["pm10"]) if row.get("pm10") is not None else None,
+            })
+        except Exception:
+            continue
+
+    normalized = [
+        p for p in normalized
+        if p["co2"] is not None and p["voc"] is not None and p["pm25"] is not None and p["pm10"] is not None
+    ]
+    normalized.sort(key=lambda p: p["ts"])
+
+    duration_by_metric = {"co2": 0.0, "voc": 0.0, "pm25": 0.0, "pm10": 0.0}
+
+    if len(normalized) < 2:
+        return {
+            "duration_by_metric": duration_by_metric,
+            "peak": None,
+            "recovery_minutes": None,
+            "co2_slope_per_minute": 0.0,
+            "ventilation_label_key": "insufficientData",
+            "anomaly_chemical": 0,
+            "anomaly_crowded": 0,
+        }
+
+    expected_minutes = {
+        "5m": 5,
+        "15m": 15,
+        "30m": 30,
+        "1h": 60,
+        "2h": 120,
+    }.get(period, 15)
+    max_segment_minutes = max(5, expected_minutes * 2)
+
+    for i in range(len(normalized) - 1):
+        current = normalized[i]
+        nxt = normalized[i + 1]
+        dt_minutes = (nxt["ts"] - current["ts"]).total_seconds() / 60.0
+        if dt_minutes <= 0 or dt_minutes > max_segment_minutes:
+            continue
+        for metric in metric_keys:
+            if current[metric] > thresholds[metric]:
+                duration_by_metric[metric] += dt_minutes
+
+    peak: Optional[dict[str, Any]] = None
+    for point_index, point in enumerate(normalized):
+        for metric in metric_keys:
+            thr = thresholds[metric]
+            if thr <= 0:
+                continue
+            ratio = point[metric] / thr
+            if ratio <= 1:
+                continue
+            if peak is None:
+                peak = {"metric": metric, "value": point[metric], "timestamp": point["iso"], "index": point_index}
+                continue
+            peak_ratio = peak["value"] / thresholds[peak["metric"]]
+            if ratio > peak_ratio:
+                peak = {"metric": metric, "value": point[metric], "timestamp": point["iso"], "index": point_index}
+
+    recovery_minutes: Optional[float] = None
+    if peak is not None:
+        threshold = thresholds[peak["metric"]]
+        for i in range(peak["index"] + 1, len(normalized)):
+            if normalized[i][peak["metric"]] <= threshold:
+                recovery_minutes = (normalized[i]["ts"] - normalized[peak["index"]]["ts"]).total_seconds() / 60.0
+                break
+
+    latest_ts = normalized[-1]["ts"]
+    co2_window = [p for p in normalized if (latest_ts - p["ts"]).total_seconds() <= 30 * 60]
+    slopes: list[float] = []
+    for i in range(1, len(co2_window)):
+        dt = (co2_window[i]["ts"] - co2_window[i - 1]["ts"]).total_seconds() / 60.0
+        if dt <= 0:
+            continue
+        slopes.append((co2_window[i]["co2"] - co2_window[i - 1]["co2"]) / dt)
+
+    co2_slope_per_minute = (sum(slopes) / len(slopes)) if slopes else 0.0
+    if co2_slope_per_minute >= 2:
+        ventilation_label_key = "weak"
+    elif co2_slope_per_minute >= 0.3:
+        ventilation_label_key = "rising"
+    elif co2_slope_per_minute <= -1:
+        ventilation_label_key = "effective"
+    else:
+        ventilation_label_key = "balanced"
+
+    anomaly_chemical = sum(1 for p in normalized if p["co2"] <= thresholds["co2"] and p["voc"] > thresholds["voc"])
+    anomaly_crowded = sum(1 for p in normalized if p["co2"] > thresholds["co2"] and p["voc"] > thresholds["voc"])
+
+    return {
+        "duration_by_metric": {
+            "co2": round(duration_by_metric["co2"], 1),
+            "voc": round(duration_by_metric["voc"], 1),
+            "pm25": round(duration_by_metric["pm25"], 1),
+            "pm10": round(duration_by_metric["pm10"], 1),
+        },
+        "peak": (
+            {
+                "metric": peak["metric"],
+                "value": round(float(peak["value"]), 1),
+                "timestamp": peak["timestamp"],
+            }
+            if peak is not None else None
+        ),
+        "recovery_minutes": round(recovery_minutes, 1) if recovery_minutes is not None else None,
+        "co2_slope_per_minute": round(co2_slope_per_minute, 2),
+        "ventilation_label_key": ventilation_label_key,
+        "anomaly_chemical": anomaly_chemical,
+        "anomaly_crowded": anomaly_crowded,
+    }
+
+
+def _build_aggregated_rows(db: Session, *, start: datetime, end: datetime, period: str) -> list[dict[str, Any]]:
+    period_seconds = _period_seconds(period)
+
+    from sqlalchemy import func, text as sa_text
+
+    bucket = func.from_unixtime(
+        func.floor(func.unix_timestamp(models.ArduinoData.timestamp) / period_seconds) * period_seconds
+    )
+
+    rows = db.query(
+        bucket.label("period"),
+        func.round(func.avg(models.ArduinoData.co2), 1).label("co2"),
+        func.round(func.avg(models.ArduinoData.voc), 1).label("voc"),
+        func.round(func.avg(models.ArduinoData.pm25), 2).label("pm25"),
+        func.round(func.avg(models.ArduinoData.pm10), 2).label("pm10"),
+        func.count(models.ArduinoData.data_id).label("n"),
+    ).filter(
+        models.ArduinoData.timestamp.between(start, end)
+    ).group_by(sa_text("period")).order_by(sa_text("period")).all()
+
+    serialized_rows: list[dict[str, Any]] = []
+    for row in rows:
+        serialized_rows.append({
+            "timestamp": (
+                row.period.replace(tzinfo=timezone.utc).isoformat()
+                if hasattr(row.period, "isoformat") else str(row.period)
+            ),
+            "co2": float(row.co2) if row.co2 is not None else None,
+            "voc": float(row.voc) if row.voc is not None else None,
+            "pm25": float(row.pm25) if row.pm25 is not None else None,
+            "pm10": float(row.pm10) if row.pm10 is not None else None,
+            "sample_count": int(row.n),
+        })
+
+    return serialized_rows
+
+
+def _compute_metric_stats(db: Session, *, metric: str, start: datetime, end: datetime) -> dict[str, Any]:
+    if metric not in ["co2", "voc", "pm25", "pm10"]:
+        raise HTTPException(status_code=400, detail="Invalid metric")
+
+    from sqlalchemy import func
+    from datetime import timezone as tz
+
+    col = getattr(models.ArduinoData, metric)
+
+    result = db.query(
+        func.min(col),
+        func.max(col),
+        func.avg(col),
+        func.stddev_pop(col)
+    ).filter(models.ArduinoData.timestamp.between(start, end)).one()
+
+    min_val, max_val, avg_val, stddev_val = result
+
+    min_row = (
+        db.query(models.ArduinoData.timestamp)
+        .filter(models.ArduinoData.timestamp.between(start, end), col == min_val)
+        .order_by(models.ArduinoData.timestamp)
+        .first()
+    )
+    max_row = (
+        db.query(models.ArduinoData.timestamp)
+        .filter(models.ArduinoData.timestamp.between(start, end), col == max_val)
+        .order_by(models.ArduinoData.timestamp)
+        .first()
+    )
+
+    def _ts(row):
+        if row is None:
+            return None
+        ts = row.timestamp
+        if ts is None:
+            return None
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=tz.utc)
+        return ts.isoformat()
+
+    return {
+        "metric": metric,
+        "min": min_val,
+        "max": max_val,
+        "avg": avg_val,
+        "stddev": stddev_val,
+        "min_time": _ts(min_row),
+        "max_time": _ts(max_row),
+    }
 
 
 def _floor_bucket(dt: datetime, granularity: str) -> datetime:
@@ -296,6 +607,13 @@ async def check_and_alert(co2: float, voc: float, pm25: float, pm10: float, now_
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info(f"WebSocket connected: {websocket.client}")
+
+    now_utc = datetime.now(timezone.utc)
+    if manager.arduino_first_connected is None:
+        manager.arduino_first_connected = now_utc
+    manager.arduino_connected = True
+    asyncio.create_task(manager.broadcast(manager.get_arduino_status()))
+
     db = SessionLocal()
     try:
         while True:
@@ -507,6 +825,9 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket unexpected error: {e}")
     finally:
         db.close()
+        manager.arduino_connected = False
+        manager.arduino_last_disconnected = datetime.now(timezone.utc)
+        asyncio.create_task(manager.broadcast(manager.get_arduino_status()))
 
 
 @app.websocket("/ws/live")
@@ -578,44 +899,66 @@ async def get_aggregated_data(
     period: str = Query(default="1h"),
     db: Session = Depends(get_db)
 ):
-    period_seconds = {
-        "5m": 300, "15m": 900, "30m": 1800,
-        "1h": 3600, "2h": 7200, "4h": 14400,
-        "8h": 28800, "12h": 43200, "1d": 86400
-    }.get(period, 3600)
+    return _build_aggregated_rows(db, start=start, end=end, period=period)
 
-    from sqlalchemy import func, text as sa_text
 
-    bucket = func.from_unixtime(
-        func.floor(func.unix_timestamp(models.ArduinoData.timestamp) / period_seconds) * period_seconds
+@app.get(f"{api_prefix}/analytics/report", response_model=schemas.AnalyticsReportResponse)
+async def get_analytics_report(
+    start: datetime,
+    end: datetime,
+    period: str = Query(default="1h"),
+    db: Session = Depends(get_db)
+):
+    points = _build_aggregated_rows(db, start=start, end=end, period=period)
+    statistics = {
+        metric: schemas.AnalyticsMetricStats(**_compute_metric_stats(db, metric=metric, start=start, end=end))
+        for metric in ["co2", "voc", "pm25", "pm10"]
+    }
+
+    return schemas.AnalyticsReportResponse(
+        start=_utc_iso(start),
+        end=_utc_iso(end),
+        period=period,
+        period_seconds=_period_seconds(period),
+        point_count=len(points),
+        points=[schemas.AnalyticsReportPoint(**point) for point in points],
+        statistics=statistics,
     )
 
-    rows = db.query(
-        bucket.label("period"),
-        func.round(func.avg(models.ArduinoData.co2),  1).label("co2"),
-        func.round(func.avg(models.ArduinoData.voc),  1).label("voc"),
-        func.round(func.avg(models.ArduinoData.pm25), 2).label("pm25"),
-        func.round(func.avg(models.ArduinoData.pm10), 2).label("pm10"),
-        func.count(models.ArduinoData.data_id).label("n")
-    ).filter(
-        models.ArduinoData.timestamp.between(start, end)
-    ).group_by(sa_text("period")).order_by(sa_text("period")).all()
 
-    from datetime import timezone as tz
-    return [
-        {
-            "timestamp": (
-                row.period.replace(tzinfo=tz.utc).isoformat()
-                if hasattr(row.period, "isoformat") else str(row.period)
-            ),
-            "co2":  float(row.co2)  if row.co2  is not None else None,
-            "voc":  float(row.voc)  if row.voc  is not None else None,
-            "pm25": float(row.pm25) if row.pm25 is not None else None,
-            "pm10": float(row.pm10) if row.pm10 is not None else None,
-            "sample_count": row.n,
-        }
-        for row in rows
-    ]
+@app.get(f"{api_prefix}/dashboard/analysis", response_model=schemas.DashboardAnalysisResponse)
+async def get_dashboard_analysis(
+    request: Request,
+    start: datetime,
+    end: datetime,
+    period: str = Query(default="15m"),
+    db: Session = Depends(get_db),
+):
+    token = _extract_token_from_auth_header(request.headers.get("Authorization"))
+    current_user = auth.get_user_from_token(token, db) if token else None
+
+    thresholds = _default_thresholds()
+    if current_user is not None:
+        settings = db.query(models.UserSettings).filter_by(user_id=current_user.id).first()
+        thresholds = _coerce_thresholds(settings.thresholds if settings else None)
+
+    points = _build_aggregated_rows(db, start=start, end=end, period=period)
+    advanced = _build_dashboard_advanced(points, thresholds, period)
+
+    latest = db.query(models.ArduinoData).order_by(models.ArduinoData.timestamp.desc()).first()
+    if latest is None:
+        aqi = 0
+    else:
+        aqi = _calculate_aqi(float(latest.pm25), float(latest.pm10))
+
+    return schemas.DashboardAnalysisResponse(
+        start=_utc_iso(start),
+        end=_utc_iso(end),
+        period=period,
+        thresholds=thresholds,
+        aqi=aqi,
+        advanced=schemas.DashboardAdvancedAnalysis(**advanced),
+    )
 
 
 @app.get(f"{api_prefix}/sensors/exceeded-intervals")
@@ -733,57 +1076,7 @@ async def get_current_data(db: Session = Depends(get_db)):
 
 @app.get(f"{api_prefix}/stats")
 async def get_stats(metric: str, start: datetime, end: datetime, db: Session = Depends(get_db)):
-    if metric not in ["co2", "voc", "pm25", "pm10"]:
-        raise HTTPException(status_code=400, detail="Invalid metric")
-
-    from sqlalchemy import func
-    from datetime import timezone as tz
-
-    col = getattr(models.ArduinoData, metric)
-
-    result = db.query(
-        func.min(col),
-        func.max(col),
-        func.avg(col),
-        func.stddev_pop(col)
-    ).filter(models.ArduinoData.timestamp.between(start, end)).one()
-
-    min_val, max_val, avg_val, stddev_val = result
-
-    # Find the row where the metric hits its minimum
-    min_row = (
-        db.query(models.ArduinoData.timestamp)
-        .filter(models.ArduinoData.timestamp.between(start, end), col == min_val)
-        .order_by(models.ArduinoData.timestamp)
-        .first()
-    )
-    # Find the row where the metric hits its maximum
-    max_row = (
-        db.query(models.ArduinoData.timestamp)
-        .filter(models.ArduinoData.timestamp.between(start, end), col == max_val)
-        .order_by(models.ArduinoData.timestamp)
-        .first()
-    )
-
-    def _ts(row):
-        if row is None:
-            return None
-        ts = row.timestamp
-        if ts is None:
-            return None
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=tz.utc)
-        return ts.isoformat()
-
-    return {
-        "metric": metric,
-        "min": min_val,
-        "max": max_val,
-        "avg": avg_val,
-        "stddev": stddev_val,
-        "min_time": _ts(min_row),
-        "max_time": _ts(max_row),
-    }
+    return _compute_metric_stats(db, metric=metric, start=start, end=end)
 
 
 @app.get(f"{api_prefix}/settings", response_model=schemas.UserSettings)

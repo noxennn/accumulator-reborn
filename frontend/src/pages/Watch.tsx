@@ -68,7 +68,7 @@ function aggregateFieldCounts(series?: WatchPeriodSeries) {
 
 export default function Watch() {
   const { t } = useTranslation();
-  const { dataBuffer, logsBuffer, invalidBuffer, isConnected, error } = useWebSocketData();
+  const { dataBuffer, logsBuffer, invalidBuffer, isConnected, isConnecting, error, arduinoStatus } = useWebSocketData();
   const [periodSeries, setPeriodSeries] = useState<Record<SummaryPeriod, WatchPeriodSeries> | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -171,39 +171,47 @@ export default function Watch() {
         </div>
         <div
           className={`badge badge-lg gap-2 ${
-            isConnected ? 'badge-success' : 'badge-error'
+            isConnected ? 'badge-success' : isConnecting ? 'badge-warning' : 'badge-error'
           }`}
         >
           <span
             className={`inline-block w-2 h-2 rounded-full animate-pulse ${
-              isConnected ? 'bg-green-200' : 'bg-red-200'
+              isConnected ? 'bg-green-200' : isConnecting ? 'bg-yellow-200' : 'bg-red-200'
             }`}
           />
-          {isConnected ? t('watch.connected') : t('watch.disconnected')}
+          {isConnected ? t('watch.connected') : isConnecting ? t('watch.connecting') : t('watch.disconnected')}
         </div>
       </div>
 
-      {error && (
+      {error && !isConnecting && (
         <div className="alert alert-error text-sm py-2">{error}</div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card bg-base-200/80 shadow-sm border border-base-300">
           <div className="card-body p-4">
-            <p className="text-xs uppercase tracking-wide opacity-60">{t('watch.points')}</p>
-            <p className="text-2xl font-semibold leading-none mt-1">{dataBuffer.length}</p>
+            <p className="text-xs uppercase tracking-wide opacity-60">{t('watch.arduinoFirstConnected')}</p>
+            <p className="text-sm font-semibold leading-snug mt-1 font-mono">
+              {arduinoStatus.first_connected
+                ? format(new Date(arduinoStatus.first_connected), 'dd.MM.yyyy HH:mm:ss')
+                : '-'}
+            </p>
           </div>
         </div>
         <div className="card bg-base-200/80 shadow-sm border border-base-300">
           <div className="card-body p-4">
-            <p className="text-xs uppercase tracking-wide opacity-60">{t('watch.chartWindow')}</p>
-            <p className="text-2xl font-semibold leading-none mt-1">{t('watch.last50')}</p>
+            <p className="text-xs uppercase tracking-wide opacity-60">{t('watch.arduinoLastDisconnected')}</p>
+            <p className={`text-sm font-semibold leading-snug mt-1 font-mono ${arduinoStatus.last_disconnected && !arduinoStatus.is_connected ? 'text-error' : ''}`}>
+              {arduinoStatus.last_disconnected
+                ? format(new Date(arduinoStatus.last_disconnected), 'dd.MM.yyyy HH:mm:ss')
+                : '-'}
+            </p>
           </div>
         </div>
         <div className="card bg-base-200/80 shadow-sm border border-base-300">
           <div className="card-body p-4">
             <p className="text-xs uppercase tracking-wide opacity-60">{t('watch.samplingRate')}</p>
-            <p className="text-2xl font-semibold leading-none mt-1">
+            <p className="text-sm font-semibold leading-snug mt-1 font-mono">
               {estimatedIntervalSeconds ? `${estimatedIntervalSeconds}s` : '-'}
             </p>
           </div>
@@ -223,6 +231,7 @@ export default function Watch() {
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
           {SUMMARY_PERIODS.map((periodKey) => {
             const series = periodSeries?.[periodKey];
+            const isSeriesLoading = summaryLoading && !series;
             const totals = (series?.points ?? []).reduce(
               (acc, point) => {
                 acc.logCount += point.log_count;
@@ -248,52 +257,61 @@ export default function Watch() {
                     <span className="text-xs opacity-60">{series?.points.length ?? 0} {t('watch.buckets')}</span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-lg bg-base-100/70 p-2">
-                      <p className="text-[10px] uppercase opacity-60">{t('watch.logs')}</p>
-                      <p className="font-semibold">{totals.logCount}</p>
+                  {isSeriesLoading ? (
+                    <div className="flex justify-center items-center" style={{ height: 286 }}>
+                      <span className="loading loading-spinner loading-md opacity-50"></span>
                     </div>
-                    <div className="rounded-lg bg-base-100/70 p-2">
-                      <p className="text-[10px] uppercase opacity-60">{t('watch.invalidData')}</p>
-                      <p className="font-semibold">{totals.invalidCount}</p>
-                    </div>
-                    <div className="rounded-lg bg-base-100/70 p-2">
-                      <p className="text-[10px] uppercase opacity-60">{t('watch.restartWarnings')}</p>
-                      <p className="font-semibold">{totals.restartWarningCount}</p>
-                    </div>
-                  </div>
+                  ) : (
+                    <>
 
-                  <div className="rounded-lg border border-base-300 bg-base-100/50 p-2">
-                    <p className="text-xs font-medium mb-2 opacity-80">{t('watch.invalidByField')}</p>
-                    <div className="grid grid-cols-3 gap-x-2 gap-y-1 text-xs">
-                      <span>CO₂: {fieldCounts.co2}</span>
-                      <span>VOC: {fieldCounts.voc}</span>
-                      <span>PM2.5: {fieldCounts.pm25}</span>
-                      <span>PM10: {fieldCounts.pm10}</span>
-                      <span>{t('watch.missing')}: {fieldCounts.missing}</span>
-                      <span>{t('watch.other')}: {fieldCounts.other}</span>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-lg bg-base-100/70 p-2">
+                        <p className="text-[10px] uppercase opacity-60">{t('watch.logs')}</p>
+                        <p className="font-semibold">{totals.logCount}</p>
+                      </div>
+                      <div className="rounded-lg bg-base-100/70 p-2">
+                        <p className="text-[10px] uppercase opacity-60">{t('watch.invalidData')}</p>
+                        <p className="font-semibold">{totals.invalidCount}</p>
+                      </div>
+                      <div className="rounded-lg bg-base-100/70 p-2">
+                        <p className="text-[10px] uppercase opacity-60">{t('watch.restartWarnings')}</p>
+                        <p className="font-semibold">{totals.restartWarningCount}</p>
+                      </div>
                     </div>
-                  </div>
 
-                  <ResponsiveContainer width="100%" height={170}>
-                    <ComposedChart data={chartPoints} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-                      <XAxis dataKey="label" tick={{ fontSize: 10 }} minTickGap={18} />
-                      <YAxis tick={{ fontSize: 10 }} width={35} />
-                      <Tooltip />
-                      <Legend wrapperStyle={{ fontSize: 10 }} />
-                      <Bar dataKey="logCount" name={t('watch.logs')} fill="#60a5fa" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="invalidCount" name={t('watch.invalidData')} fill="#f97316" radius={[4, 4, 0, 0]} />
-                      <Line
-                        type="monotone"
-                        dataKey="restartWarningCount"
-                        name={t('watch.restartWarnings')}
-                        stroke="#ef4444"
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                    </ComposedChart>
-                  </ResponsiveContainer>
+                    <div className="rounded-lg border border-base-300 bg-base-100/50 p-2">
+                      <p className="text-xs font-medium mb-2 opacity-80">{t('watch.invalidByField')}</p>
+                      <div className="grid grid-cols-3 gap-x-2 gap-y-1 text-xs">
+                        <span>CO₂: {fieldCounts.co2}</span>
+                        <span>VOC: {fieldCounts.voc}</span>
+                        <span>PM2.5: {fieldCounts.pm25}</span>
+                        <span>PM10: {fieldCounts.pm10}</span>
+                        <span>{t('watch.missing')}: {fieldCounts.missing}</span>
+                        <span>{t('watch.other')}: {fieldCounts.other}</span>
+                      </div>
+                    </div>
+
+                    <ResponsiveContainer width="100%" height={170}>
+                      <ComposedChart data={chartPoints} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                        <XAxis dataKey="label" tick={{ fontSize: 10 }} minTickGap={18} />
+                        <YAxis tick={{ fontSize: 10 }} width={35} />
+                        <Tooltip />
+                        <Legend wrapperStyle={{ fontSize: 10 }} />
+                        <Bar dataKey="logCount" name={t('watch.logs')} fill="#60a5fa" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="invalidCount" name={t('watch.invalidData')} fill="#f97316" radius={[4, 4, 0, 0]} />
+                        <Line
+                          type="monotone"
+                          dataKey="restartWarningCount"
+                          name={t('watch.restartWarnings')}
+                          stroke="#ef4444"
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -357,10 +375,6 @@ export default function Watch() {
             </table>
           </div>
         </div>
-      </div>
-
-      <div className="text-xs opacity-60">
-        {t('watch.last50Hint')}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

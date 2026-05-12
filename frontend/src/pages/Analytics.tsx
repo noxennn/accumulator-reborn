@@ -7,10 +7,10 @@ import {
 } from 'recharts';
 import { format, subDays } from 'date-fns';
 import { tr, enUS, type Locale } from 'date-fns/locale';
-import { FileText, FileDown, RefreshCw } from 'lucide-react';
+import { FileText, FileDown, RefreshCw, Table } from 'lucide-react';
 import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
-import { analyticsApi } from '../lib/analyticsApi';
+import { analyticsApi, type AnalyticsReportResponse } from '../lib/analyticsApi';
 import { sensorApi } from '../lib/sensorApi';
 import { authApi } from '../lib/api';
 
@@ -69,6 +69,20 @@ const tooltipFormatter = (value: number, name: string) => [
   name,
 ];
 
+const exportNumber = (value: number | null | undefined, digits = 1) => (
+  value === null || value === undefined || Number.isNaN(Number(value))
+    ? '-'
+    : Number(value).toFixed(digits)
+);
+
+const exportDate = (ts: string, locale: Locale): string => {
+  try {
+    return format(new Date(ts), 'dd MMM yyyy HH:mm:ss', { locale });
+  } catch {
+    return ts;
+  }
+};
+
 // ── Bileşen ─────────────────────────────────────────────────────────
 
 const Analytics = () => {
@@ -85,7 +99,12 @@ const Analytics = () => {
   // Periyot ve grafik tipi
   const [period, setPeriod] = useState('1h');
   const [chartType, setChartType] = useState<'line' | 'area' | 'composed'>('line');
-  const [selectedMetrics, setSelectedMetrics] = useState(['co2', 'pm25']);
+  const [visibleMetrics, setVisibleMetrics] = useState<Record<string, boolean>>({
+    co2: true,
+    pm25: true,
+    pm10: true,
+    voc: true,
+  });
 
   // Veri
   const [data, setData] = useState<any[]>([]);
@@ -111,6 +130,15 @@ const Analytics = () => {
     { id: 'voc',  name: t('sensors.voc'),  color: '#ff8042', unit: t('units.voc') },
   ];
 
+  const visibleMetricIds = useMemo(
+    () => metrics.map(m => m.id).filter(id => visibleMetrics[id]),
+    [metrics, visibleMetrics]
+  );
+
+  const toggleMetricVisibility = (metric: string) => {
+    setVisibleMetrics(prev => ({ ...prev, [metric]: !prev[metric] }));
+  };
+
   // ── Tarih aralığını hesapla ───────────────────────────────────────
   const getDateRange = useCallback(() => {
     const end = new Date();
@@ -127,6 +155,11 @@ const Analytics = () => {
     start.setHours(0, 0, 0);
     return { start: toISO(start), end: toISO(end) };
   }, [datePreset, customStart, customEnd]);
+
+  const getExportReport = useCallback(async (): Promise<AnalyticsReportResponse> => {
+    const { start, end } = getDateRange();
+    return analyticsApi.getAnalyticsReport(start, end, period);
+  }, [getDateRange, period]);
 
   // ── Veri çek ─────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -168,16 +201,16 @@ const Analytics = () => {
 
   // ── İstatistik çek ───────────────────────────────────────────────
   useEffect(() => {
-    if (loading || !data.length || !selectedMetrics.length) return;
+    if (loading || !data.length || visibleMetricIds.length === 0) return;
     const { start, end } = getDateRange();
     const load = async () => {
       const stats: Record<string, any> = {};
-      for (const id of selectedMetrics) {
+      for (const id of visibleMetricIds) {
         try {
           const s = await analyticsApi.getMetricStats(id, start, end);
           stats[id] = analyticsApi.formatStats(s);
         } catch {
-          const vals = data.map(d => d[id]).filter(Boolean);
+          const vals = data.map(d => d[id]).filter(v => v !== null && v !== undefined).map(Number).filter(v => !Number.isNaN(v));
           if (!vals.length) { stats[id] = { min: '-', max: '-', avg: '-', std: '-' }; continue; }
           const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
           stats[id] = {
@@ -191,26 +224,115 @@ const Analytics = () => {
       setMetricStats(stats);
     };
     load();
-  }, [selectedMetrics, data, loading]);
+  }, [visibleMetricIds, data, loading, getDateRange]);
 
-  // ── Rapor indir ──────────────────────────────────────────────────
-  const downloadReport = () => {
-    const content = selectedMetrics.map(id => {
-      const m = metrics.find(x => x.id === id)!;
-      const s = metricStats[id] || {};
-      return `${m.name} (${m.unit})\nMin: ${s.min ?? '-'}  Max: ${s.max ?? '-'}  Ort: ${s.avg ?? '-'}  StdSap: ${s.std ?? '-'}\n`;
-    }).join('\n');
-    const a = Object.assign(document.createElement('a'), {
-      href: URL.createObjectURL(new Blob([content], { type: 'text/plain' })),
-      download: `air-quality-${format(new Date(), 'yyyy-MM-dd')}.txt`,
+  const buildReportLines = (report: AnalyticsReportResponse) => {
+    const lines: string[] = [];
+    lines.push('Hava Kalitesi Raporu');
+    lines.push(`Tarih Aralığı: ${exportDate(report.start, dateLocale)} - ${exportDate(report.end, dateLocale)}`);
+    lines.push(`Periyot: ${t(`trend.periods.${report.period}`, report.period)}`);
+    lines.push(`Veri Noktası: ${report.point_count}`);
+    lines.push('');
+
+    lines.push('İstatistikler');
+    ['co2', 'voc', 'pm25', 'pm10'].forEach(metricId => {
+      const metric = metrics.find(item => item.id === metricId);
+      const stat = report.statistics[metricId];
+      if (!metric || !stat) return;
+      lines.push(`${metric.name} (${metric.unit})`);
+      lines.push(`  Minimum: ${exportNumber(stat.min)}`);
+      lines.push(`  Maksimum: ${exportNumber(stat.max)}`);
+      lines.push(`  Ortalama: ${exportNumber(stat.avg)}`);
+      lines.push(`  Standart Sapma: ${exportNumber(stat.stddev)}`);
+      lines.push('');
     });
-    a.click();
-    URL.revokeObjectURL(a.href);
+
+    lines.push('Veri Tablosu');
+    lines.push(['Tarih', 'CO2', 'VOC', 'PM2.5', 'PM10', 'Örnek Sayısı'].join('\t'));
+    report.points.forEach(point => {
+      lines.push([
+        exportDate(point.timestamp, dateLocale),
+        exportNumber(point.co2),
+        exportNumber(point.voc),
+        exportNumber(point.pm25),
+        exportNumber(point.pm10),
+        String(point.sample_count),
+      ].join('\t'));
+    });
+
+    return lines.join('\n');
   };
 
+  // ── TXT indir ────────────────────────────────────────────────────
+  const downloadReport = async () => {
+    try {
+      const report = await getExportReport();
+      const content = buildReportLines(report);
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob(['﻿' + content], { type: 'text/plain;charset=utf-8' })),
+        download: `air-quality-${format(new Date(), 'yyyy-MM-dd')}.txt`,
+      });
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (error) {
+      console.error(error);
+      alert(t('errors.dataLoadFailed'));
+    }
+  };
+
+  // ── CSV indir ────────────────────────────────────────────────────
+  const downloadCSV = async () => {
+    try {
+      const report = await getExportReport();
+      const rows = [
+        ['Report', 'Air Quality'],
+        ['Start', report.start],
+        ['End', report.end],
+        ['Period', report.period],
+        ['Point Count', String(report.point_count)],
+        [],
+        ['metric', 'min', 'max', 'avg', 'stddev', 'min_time', 'max_time'],
+        ...['co2', 'voc', 'pm25', 'pm10'].map(metricId => {
+          const stat = report.statistics[metricId];
+          return [
+            metricId,
+            exportNumber(stat?.min),
+            exportNumber(stat?.max),
+            exportNumber(stat?.avg),
+            exportNumber(stat?.stddev),
+            stat?.min_time ?? '',
+            stat?.max_time ?? '',
+          ];
+        }),
+        [],
+        ['timestamp', 'co2', 'voc', 'pm25', 'pm10', 'sample_count'],
+        ...report.points.map(point => [
+          point.timestamp,
+          exportNumber(point.co2),
+          exportNumber(point.voc),
+          exportNumber(point.pm25),
+          exportNumber(point.pm10),
+          String(point.sample_count),
+        ]),
+      ];
+      const csv = rows.map(row => row.join(',')).join('\n');
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })),
+        download: `air-quality-${format(new Date(), 'yyyy-MM-dd')}.csv`,
+      });
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (error) {
+      console.error(error);
+      alert(t('errors.dataLoadFailed'));
+    }
+  };
+
+  // ── PDF indir ────────────────────────────────────────────────────
   const downloadPDF = async () => {
     if (!chartRef.current) return;
     try {
+      const report = await getExportReport();
       const container = document.createElement('div');
       Object.assign(container.style, {
         position: 'absolute', top: '-9999px', left: '-9999px',
@@ -233,17 +355,96 @@ const Analytics = () => {
         },
       });
       document.body.removeChild(container);
+
+      const pdfText = (text: string) =>
+        text.replace(/₂/g, '2').replace(/₃/g, '3').replace(/μ/g, 'u').replace(/[^\x00-\x7F]/g, '?');
+
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const w = 210, h = (canvas.height * w) / canvas.width;
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, w, h);
-      let y = h + 10;
-      pdf.setFontSize(11);
-      selectedMetrics.forEach(id => {
-        const m = metrics.find(x => x.id === id)!;
-        const s = metricStats[id] || {};
-        pdf.text(`${m.name} (${m.unit})`, 10, y); y += 7;
-        pdf.text(`Min: ${s.min ?? '-'}  Max: ${s.max ?? '-'}  Ort: ${s.avg ?? '-'}  StdSap: ${s.std ?? '-'}`, 15, y); y += 10;
+      const pageW = 210, pageH = 297, margin = 10;
+
+      const pdfRange = `${exportDate(report.start, dateLocale)} - ${exportDate(report.end, dateLocale)}`;
+
+      pdf.setFontSize(14);
+      pdf.text(pdfText('Air Quality Report'), margin, 15);
+      pdf.setFontSize(10);
+      pdf.text(pdfText(`Range: ${pdfRange}`), margin, 22);
+      pdf.text(pdfText(`Period: ${t(`trend.periods.${report.period}`, report.period)}`), margin, 28);
+      pdf.text(pdfText(`Points: ${report.point_count}`), margin, 34);
+
+      // Grafik görseli
+      const imgY = 40;
+      const imgW = pageW - 2 * margin;
+      const imgH = Math.min((canvas.height * imgW) / canvas.width, pageH - imgY - 60);
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', margin, imgY, imgW, imgH);
+
+      let y = imgY + imgH + 12;
+      if (y + 70 > pageH - margin) {
+        pdf.addPage();
+        y = margin + 10;
+      }
+      pdf.setFontSize(12);
+      pdf.text(pdfText('Statistics'), margin, y); y += 8;
+      pdf.setFontSize(10);
+      ['co2', 'voc', 'pm25', 'pm10'].forEach(metricId => {
+        if (y > pageH - 25) { pdf.addPage(); y = margin + 10; }
+        const metric = metrics.find(item => item.id === metricId);
+        const stat = report.statistics[metricId];
+        if (!metric || !stat) return;
+        pdf.text(pdfText(`${metric.name} (${metric.unit})`), margin, y); y += 6;
+        pdf.text(pdfText(`Min: ${exportNumber(stat.min)}  Max: ${exportNumber(stat.max)}  Avg: ${exportNumber(stat.avg)}  Std: ${exportNumber(stat.stddev)}`), margin + 5, y); y += 5;
+        pdf.text(pdfText(`Min time: ${stat.min_time ?? '-'}  Max time: ${stat.max_time ?? '-'}`), margin + 5, y); y += 8;
       });
+
+      if (y > pageH - 30) {
+        pdf.addPage();
+        y = margin + 10;
+      }
+
+      const columnWidths = [50, 24, 24, 24, 24, 24];
+      const writeTableHeader = (currentY: number) => {
+        let x = margin;
+        pdf.setFont('courier', 'bold');
+        pdf.setFontSize(8);
+        ['Timestamp', 'CO2', 'VOC', 'PM2.5', 'PM10', 'Count'].forEach((label, index) => {
+          pdf.text(pdfText(label), x, currentY);
+          x += columnWidths[index];
+        });
+        pdf.setFont('courier', 'normal');
+        return currentY + 5;
+      };
+
+      pdf.setFontSize(11);
+      pdf.text(pdfText('Data Table'), margin, y);
+      y += 8;
+      y = writeTableHeader(y);
+
+      report.points.forEach(point => {
+        if (y > pageH - margin - 6) {
+          pdf.addPage();
+          y = margin + 10;
+          pdf.setFontSize(11);
+          pdf.text(pdfText('Data Table'), margin, y);
+          y += 8;
+          y = writeTableHeader(y);
+        }
+
+        const rowValues = [
+          exportDate(point.timestamp, dateLocale),
+          exportNumber(point.co2),
+          exportNumber(point.voc),
+          exportNumber(point.pm25),
+          exportNumber(point.pm10),
+          String(point.sample_count),
+        ];
+        let x = margin;
+        pdf.setFontSize(7);
+        rowValues.forEach((value, index) => {
+          pdf.text(pdfText(value), x, y);
+          x += columnWidths[index];
+        });
+        y += 5;
+      });
+
       pdf.save(`air-quality-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
     } catch (e) {
       console.error(e);
@@ -323,23 +524,77 @@ const Analytics = () => {
               borderRadius: '0.5rem',
             }}
           />
-          <Legend wrapperStyle={{ paddingTop: 20, color: '#6b7280' }} />
+          <Legend
+            onClick={(dataEntry) => toggleMetricVisibility(String(dataEntry.dataKey))}
+            wrapperStyle={{ cursor: 'pointer', paddingTop: 20, color: '#6b7280' }}
+            formatter={(value, entry) => {
+              const metricId = String(entry.dataKey);
+              const active = metricId && visibleMetrics[metricId];
+              return (
+                <span
+                  style={{
+                    opacity: active ? 1 : 0.4,
+                    margin: '0 8px',
+                    fontWeight: active ? 'bold' : 'normal',
+                  }}
+                >
+                  {value}
+                </span>
+              );
+            }}
+          />
           {refArea}
-          {selectedMetrics.map(id => {
-            const m = metrics.find(x => x.id === id)!;
-            if (chartType === 'area') return (
-              <Area key={id} type="monotone" dataKey={id} stroke={m.color} fill={m.color}
-                name={`${m.name} (${m.unit})`} fillOpacity={0.3} strokeWidth={2} dot={false} />
-            );
-            if (chartType === 'composed') return (
-              <React.Fragment key={id}>
-                <Line type="monotone" dataKey={id} stroke={m.color} name={`${m.name} (${m.unit})`} strokeWidth={2} dot={false} />
-                <Scatter dataKey={id} fill={m.color} r={3} />
-              </React.Fragment>
-            );
+          {metrics.map(m => {
+            const id = m.id;
+            const hidden = !visibleMetrics[id];
+            if (chartType === 'area') {
+              return (
+                <Area
+                  key={id}
+                  type="monotone"
+                  dataKey={id}
+                  stroke={m.color}
+                  fill={m.color}
+                  name={`${m.name} (${m.unit})`}
+                  fillOpacity={0.3}
+                  strokeWidth={2}
+                  dot={false}
+                  hide={hidden}
+                  isAnimationActive={false}
+                />
+              );
+            }
+            if (chartType === 'composed') {
+              return (
+                <React.Fragment key={id}>
+                  <Line
+                    type="monotone"
+                    dataKey={id}
+                    stroke={m.color}
+                    name={`${m.name} (${m.unit})`}
+                    strokeWidth={2}
+                    dot={false}
+                    hide={hidden}
+                    isAnimationActive={false}
+                  />
+                  {!hidden && (
+                    <Scatter dataKey={id} fill={m.color} r={3} isAnimationActive={false} legendType="none" />
+                  )}
+                </React.Fragment>
+              );
+            }
             return (
-              <Line key={id} type="monotone" dataKey={id} stroke={m.color}
-                name={`${m.name} (${m.unit})`} strokeWidth={2} dot={false} />
+              <Line
+                key={id}
+                type="monotone"
+                dataKey={id}
+                stroke={m.color}
+                name={`${m.name} (${m.unit})`}
+                strokeWidth={2}
+                dot={false}
+                hide={hidden}
+                isAnimationActive={false}
+              />
             );
           })}
         </ChartComp>
@@ -414,21 +669,27 @@ const Analytics = () => {
                 </button>
               </div>
 
-              {/* Periyot */}
-              <select
-                className="select select-bordered select-sm"
-                value={period}
-                onChange={e => setPeriod(e.target.value)}
-                disabled={loading}
-              >
-                {PERIODS.map(p => (
-                  <option key={p.value} value={p.value}>{t(`trend.periods.${p.value}`, p.value)}</option>
-                ))}
-              </select>
+              {/* Periyot: label + select on one row so height matches join / other selects */}
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs font-medium text-base-content/80 whitespace-nowrap">
+                  {t('trend.samplingInterval')}
+                </span>
+                <select
+                  className="select select-bordered select-sm w-auto min-w-[7.5rem]"
+                  value={period}
+                  onChange={e => setPeriod(e.target.value)}
+                  disabled={loading}
+                  aria-label={t('trend.samplingInterval')}
+                >
+                  {PERIODS.map(p => (
+                    <option key={p.value} value={p.value}>{t(`trend.periods.${p.value}`, p.value)}</option>
+                  ))}
+                </select>
+              </div>
 
               {/* Grafik tipi */}
               <select
-                className="select select-bordered select-sm"
+                className="select select-bordered select-sm shrink-0"
                 value={chartType}
                 onChange={e => setChartType(e.target.value as any)}
                 disabled={loading}
@@ -441,10 +702,13 @@ const Analytics = () => {
 
             {/* İndir + Yenile */}
             <div className="flex gap-2">
-              <button className="btn btn-outline btn-primary btn-sm" onClick={downloadReport} disabled={loading}>
+              <button className="btn btn-outline btn-primary btn-sm" onClick={downloadReport} disabled={loading || !data.length}>
                 <FileText className="w-4 h-4 mr-1" /> TXT
               </button>
-              <button className="btn btn-outline btn-primary btn-sm" onClick={downloadPDF} disabled={loading}>
+              <button className="btn btn-outline btn-primary btn-sm" onClick={downloadCSV} disabled={loading || !data.length}>
+                <Table className="w-4 h-4 mr-1" /> CSV
+              </button>
+              <button className="btn btn-outline btn-primary btn-sm" onClick={downloadPDF} disabled={loading || !data.length}>
                 <FileDown className="w-4 h-4 mr-1" /> PDF
               </button>
               <button className="btn btn-ghost btn-sm" onClick={fetchData} disabled={loading}>
@@ -479,23 +743,6 @@ const Analytics = () => {
             </div>
           )}
 
-          {/* Satır 3: Metrik seçimi */}
-          <div className="flex flex-wrap gap-4">
-            {metrics.map(m => (
-              <label key={m.id} className="cursor-pointer flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  className="checkbox checkbox-primary checkbox-sm"
-                  checked={selectedMetrics.includes(m.id)}
-                  onChange={e => setSelectedMetrics(prev =>
-                    e.target.checked ? [...prev, m.id] : prev.filter(x => x !== m.id)
-                  )}
-                  disabled={loading}
-                />
-                <span className="label-text">{m.name}</span>
-              </label>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -518,9 +765,12 @@ const Analytics = () => {
             )}
           </div>
           {data.length > 0 && (
-            <p className="text-xs opacity-50 text-right">
-              {t('analyticsPage.dataPointsHint', { count: data.length })}
-            </p>
+            <>
+              <p className="text-xs opacity-50 text-right">
+                {t('analyticsPage.dataPointsHint', { count: data.length })}
+              </p>
+              <p className="mt-2 text-sm text-center text-base-content/60">{t('trend.legendHelp')}</p>
+            </>
           )}
         </div>
       </div>
@@ -534,11 +784,11 @@ const Analytics = () => {
               <div className="flex justify-center items-center py-6">
                 <span className="loading loading-spinner loading-md opacity-50"></span>
               </div>
-            ) : filteredExceededIntervals.filter(iv => selectedMetrics.includes(iv.metric)).length === 0 ? (
+            ) : filteredExceededIntervals.filter(iv => visibleMetrics[iv.metric]).length === 0 ? (
               <p className="text-sm opacity-40">{t('threshold.noExceededIntervals')}</p>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {metrics.filter(m => selectedMetrics.includes(m.id)).map(m => {
+                {metrics.filter(m => visibleMetrics[m.id]).map(m => {
                   const intervals = filteredExceededIntervals
                     .filter(iv => iv.metric === m.id)
                     .sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
@@ -593,9 +843,9 @@ const Analytics = () => {
       )}
 
       {/* ── İstatistik kartları ── */}
-      {selectedMetrics.length > 0 && (
+      {visibleMetricIds.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {selectedMetrics.map(id => {
+          {visibleMetricIds.map(id => {
             const m = metrics.find(x => x.id === id)!;
             const s = metricStats[id];
             return (

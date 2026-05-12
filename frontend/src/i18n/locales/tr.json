@@ -1,4 +1,31 @@
 {
+  "appTitle": "Hava Kalitesi Monitörü",
+  "documentTitle": "Hava Kalitesi Monitörü",
+  "infoTooltip": {
+    "optimalRangeLabel": "Optimum aralık:"
+  },
+  "sensorTooltips": {
+    "co2": {
+      "title": "Karbondioksit (CO₂)",
+      "description": "Havadaki karbondioksit konsantrasyonu. Yüksek seviyeler baş ağrısı, yorgunluk ve konsantrasyon sorunlarına yol açabilir.",
+      "optimalRange": "400–800 ppm"
+    },
+    "voc": {
+      "title": "Uçucu organik bileşikler (VOC)",
+      "description": "İç mekân havasındaki organik kimyasallar. Yüksek seviyeler baş ağrısı, mide bulantısı ve göz tahrişine neden olabilir.",
+      "optimalRange": "0–500 ppb"
+    },
+    "pm25": {
+      "title": "PM2.5",
+      "description": "2,5 mikrometreden küçük partikül madde. Akciğerlere derinlemesine nüfuz edebilir ve solunum sorunlarını kötüleştirebilir.",
+      "optimalRange": "0–35 μg/m³"
+    },
+    "pm10": {
+      "title": "PM10",
+      "description": "10 mikrometreden küçük partikül madde. Solunum yollarını etkileyebilir ve alerjik reaksiyonlara yol açabilir.",
+      "optimalRange": "0–150 μg/m³"
+    }
+  },
   "airQualityStation": "Hava Kalitesi İzleme İstasyonu",
   "dashboard": "Gösterge Paneli",
   "analytics": "Analizler",
@@ -130,10 +157,12 @@
       "poor": "Hassas gruplar sağlık etkileri yaşayabilir.",
       "veryPoor": "Herkes sağlık etkileri yaşamaya başlayabilir.",
       "hazardous": "Sağlık uyarısı: Herkes ciddi sağlık etkileriyle karşılaşabilir."
-    }
+    },
+    "optimalRange": "0–50"
   },
   "trend": {
     "title": "24 Saatlik Trend",
+    "samplingInterval": "Örnekleme aralığı",
     "legendHelp": "Değerleri göstermek veya gizlemek için etiketlere tıklayın",
     "apply": "Uygula",
     "periods": {
@@ -170,9 +199,49 @@
     "minSuffix": " dk",
     "focused": "odaklandı"
   },
+  "dashboardAnalysis": {
+    "titles": {
+      "exceedanceDuration": "Exceedance Süresi",
+      "peakRecovery": "Peak + Recovery",
+      "ventilationEfficiency": "Ventilation Etkinliği",
+      "vocCo2Anomaly": "VOC/CO₂ Anomali",
+      "rollingRiskScore": "Rolling Risk Score"
+    },
+    "info": {
+      "exceedanceDuration": "Seçilen zaman aralığında değerlerin eşik üstünde kaldığı toplam süre (dakika).",
+      "peakRecovery": "En yüksek eşik aşımı sonrası ölçümün yeniden eşik altına dönme süresi.",
+      "ventilationEfficiency": "Son verilerde d(CO₂)/dt eğimi. Pozitif eğim havalandırmanın zayıf, negatif eğim daha etkili olduğunu gösterir.",
+      "vocCo2Anomaly": "CO₂ normal + VOC yüksek olursa kimyasal kaynak olasılığı; ikisi birlikte yüksekse kalabalık/havalandırma sorunu olasılığı artar.",
+      "rollingRiskScore": "Son 15/30 dakikadaki ağırlıklı ortalama risk. Tekil piki yumuşatıp daha stabil risk görünümü sağlar."
+    },
+    "labels": {
+      "peak": "Tepe",
+      "recovery": "Normale dönüş",
+      "notRecovered": "Henüz dönmedi",
+      "noPeakExceedance": "Bu aralıkta tepe aşımı yok.",
+      "co2Slope": "d(CO₂)/dt",
+      "co2NormalVocHigh": "CO₂ normal + VOC yüksek",
+      "co2HighVocHigh": "CO₂ yüksek + VOC yüksek",
+      "last15Min": "Son 15 dk",
+      "last30Min": "Son 30 dk",
+      "weightedAverageRisk": "Ağırlıklı ortalama risk",
+      "insufficientData": "Yetersiz veri"
+    },
+    "ventilation": {
+      "weak": "Havalandırma zayıf",
+      "rising": "CO₂ yükseliyor",
+      "effective": "Havalandırma etkili",
+      "balanced": "Dengeli"
+    },
+    "units": {
+      "minuteShort": "dk",
+      "ppmPerMinute": "ppm/dk"
+    }
+  },
   "watch": {
     "title": "Canlı İzleme",
     "connected": "Bağlı",
+    "connecting": "Bağlanıyor",
     "disconnected": "Bağlı Değil",
     "liveData": "Canlı Veri",
     "latestTen": "Son 10 kayıt",
@@ -207,6 +276,11 @@
     "field": "Alan",
     "value": "Değer",
     "reason": "Neden",
-    "message": "Mesaj"
+    "message": "Mesaj",
+    "arduinoStatus": "Arduino Bağlantı Durumu",
+    "arduinoConnected": "Bağlı",
+    "arduinoDisconnected": "Bağlantı Yok",
+    "arduinoFirstConnected": "İlk Bağlantı Zamanı",
+    "arduinoLastDisconnected": "Son Bağlantı Kesme Zamanı"
   }
 }

@@ -44,6 +44,12 @@ export interface DeviceEventEntry {
   payload?: unknown;
 }
 
+export interface ArduinoStatus {
+  is_connected: boolean;
+  first_connected: string | null;
+  last_disconnected: string | null;
+}
+
 const MAX_RENDER_POINTS = 50;
 
 export function useWebSocketData() {
@@ -52,13 +58,22 @@ export function useWebSocketData() {
   const [invalidBuffer, setInvalidBuffer] = useState<InvalidEntry[]>([]);
   const [eventBuffer, setEventBuffer] = useState<DeviceEventEntry[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [arduinoStatus, setArduinoStatus] = useState<ArduinoStatus>({
+    is_connected: false,
+    first_connected: null,
+    last_disconnected: null,
+  });
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMounted = useRef(true);
   const isHydratedRef = useRef(false);
   const seenTimestampsRef = useRef<Set<string>>(new Set());
+  const hasEverConnectedRef = useRef(false);
+  const connectAttemptsRef = useRef(0);
+  const firstAttemptStartedAtRef = useRef<number | null>(null);
 
   const hydrateInitialData = useCallback(async () => {
     if (isHydratedRef.current || !isMounted.current) return;
@@ -89,6 +104,12 @@ export function useWebSocketData() {
   const connect = useCallback(() => {
     if (!isMounted.current) return;
 
+    connectAttemptsRef.current += 1;
+    if (firstAttemptStartedAtRef.current === null) {
+      firstAttemptStartedAtRef.current = Date.now();
+    }
+    setIsConnecting(true);
+
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
     const baseWsUrl =
       import.meta.env.VITE_WS_URL ||
@@ -103,7 +124,11 @@ export function useWebSocketData() {
 
     ws.onopen = () => {
       if (!isMounted.current) return;
+      hasEverConnectedRef.current = true;
+      connectAttemptsRef.current = 0;
+      firstAttemptStartedAtRef.current = null;
       setIsConnected(true);
+      setIsConnecting(false);
       setError(null);
     };
 
@@ -117,6 +142,12 @@ export function useWebSocketData() {
           setInvalidBuffer(prev => [...prev, msg as InvalidEntry].slice(-MAX_RENDER_POINTS));
         } else if (msg.type === 'event') {
           setEventBuffer(prev => [...prev, msg as DeviceEventEntry].slice(-MAX_RENDER_POINTS));
+        } else if (msg.type === 'arduino_status') {
+          setArduinoStatus({
+            is_connected: msg.is_connected,
+            first_connected: msg.first_connected ?? null,
+            last_disconnected: msg.last_disconnected ?? null,
+          });
         } else {
           // type === 'data' or legacy (no type)
           const point = msg as LiveDataPoint;
@@ -137,13 +168,32 @@ export function useWebSocketData() {
 
     ws.onclose = () => {
       if (!isMounted.current) return;
+      const elapsedMs = firstAttemptStartedAtRef.current
+        ? Date.now() - firstAttemptStartedAtRef.current
+        : 0;
+      const startupGraceActive = !hasEverConnectedRef.current && elapsedMs <= 15000;
+
       setIsConnected(false);
+      if (!startupGraceActive) {
+        setIsConnecting(false);
+      }
       reconnectTimer.current = setTimeout(connect, 3000);
     };
 
     ws.onerror = () => {
       if (!isMounted.current) return;
-      setError('WebSocket connection error');
+      const elapsedMs = firstAttemptStartedAtRef.current
+        ? Date.now() - firstAttemptStartedAtRef.current
+        : 0;
+      const shouldShowError =
+        hasEverConnectedRef.current ||
+        elapsedMs > 15000;
+
+      // Suppress noisy first-load transient WS errors; show only persistent failures.
+      if (shouldShowError) {
+        setError('WebSocket connection error');
+        setIsConnecting(false);
+      }
       ws.close();
     };
   }, []);
@@ -159,5 +209,5 @@ export function useWebSocketData() {
     };
   }, [connect, hydrateInitialData]);
 
-  return { dataBuffer, logsBuffer, invalidBuffer, eventBuffer, isConnected, error };
+  return { dataBuffer, logsBuffer, invalidBuffer, eventBuffer, isConnected, isConnecting, error, arduinoStatus };
 }

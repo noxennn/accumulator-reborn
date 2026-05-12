@@ -1,4 +1,31 @@
 {
+  "appTitle": "Air Quality Monitor",
+  "documentTitle": "Air Quality Monitor",
+  "infoTooltip": {
+    "optimalRangeLabel": "Optimal range:"
+  },
+  "sensorTooltips": {
+    "co2": {
+      "title": "Carbon dioxide (CO₂)",
+      "description": "Concentration of carbon dioxide in the air. High levels can contribute to headaches, fatigue, and reduced concentration.",
+      "optimalRange": "400–800 ppm"
+    },
+    "voc": {
+      "title": "Volatile organic compounds (VOC)",
+      "description": "Organic chemicals present in indoor air. High levels may cause headaches, nausea, or eye irritation.",
+      "optimalRange": "0–500 ppb"
+    },
+    "pm25": {
+      "title": "PM2.5",
+      "description": "Fine particulate matter smaller than 2.5 micrometers. It can penetrate deep into the lungs and worsen respiratory conditions.",
+      "optimalRange": "0–35 μg/m³"
+    },
+    "pm10": {
+      "title": "PM10",
+      "description": "Particulate matter smaller than 10 micrometers. It can affect airways and trigger allergic reactions.",
+      "optimalRange": "0–150 μg/m³"
+    }
+  },
   "airQualityStation": "Air Quality Monitoring Station",
   "dashboard": "Dashboard",
   "analytics": "Analytics",
@@ -130,10 +157,12 @@
       "poor": "Members of sensitive groups may experience health effects.",
       "veryPoor": "Everyone may begin to experience health effects.",
       "hazardous": "Health alert: everyone may experience serious health effects."
-    }
+    },
+    "optimalRange": "0–50"
   },
   "trend": {
     "title": "24-Hour Trend",
+    "samplingInterval": "Sampling interval",
     "legendHelp": "Click on labels to show or hide values",
     "apply": "Apply",
     "periods": {
@@ -170,9 +199,49 @@
     "minSuffix": " min",
     "focused": "focused"
   },
+  "dashboardAnalysis": {
+    "titles": {
+      "exceedanceDuration": "Exceedance Duration",
+      "peakRecovery": "Peak + Recovery",
+      "ventilationEfficiency": "Ventilation Efficiency",
+      "vocCo2Anomaly": "VOC/CO₂ Anomaly",
+      "rollingRiskScore": "Rolling Risk Score"
+    },
+    "info": {
+      "exceedanceDuration": "Total duration (minutes) that values stayed above threshold in the selected time window.",
+      "peakRecovery": "Time needed to return below threshold after the highest exceedance.",
+      "ventilationEfficiency": "Recent d(CO₂)/dt slope. Positive slope indicates weaker ventilation, negative slope indicates better ventilation.",
+      "vocCo2Anomaly": "If CO₂ is normal and VOC is high, chemical source likelihood increases; if both are high, crowding/ventilation issue likelihood increases.",
+      "rollingRiskScore": "Weighted average risk over the last 15/30 minutes, smoothing short spikes for a more stable risk view."
+    },
+    "labels": {
+      "peak": "Peak",
+      "recovery": "Recovery",
+      "notRecovered": "Not recovered yet",
+      "noPeakExceedance": "No peak exceedance in this interval.",
+      "co2Slope": "d(CO₂)/dt",
+      "co2NormalVocHigh": "CO₂ normal + VOC high",
+      "co2HighVocHigh": "CO₂ high + VOC high",
+      "last15Min": "Last 15 min",
+      "last30Min": "Last 30 min",
+      "weightedAverageRisk": "Weighted average risk",
+      "insufficientData": "Insufficient data"
+    },
+    "ventilation": {
+      "weak": "Ventilation is weak",
+      "rising": "CO₂ is rising",
+      "effective": "Ventilation is effective",
+      "balanced": "Balanced"
+    },
+    "units": {
+      "minuteShort": "min",
+      "ppmPerMinute": "ppm/min"
+    }
+  },
   "watch": {
     "title": "Live Watch",
     "connected": "Connected",
+    "connecting": "Connecting",
     "disconnected": "Disconnected",
     "liveData": "Live Data",
     "latestTen": "Latest 10 rows",
@@ -207,6 +276,11 @@
     "field": "Field",
     "value": "Value",
     "reason": "Reason",
-    "message": "Message"
+    "message": "Message",
+    "arduinoStatus": "Arduino Connection Status",
+    "arduinoConnected": "Connected",
+    "arduinoDisconnected": "Disconnected",
+    "arduinoFirstConnected": "First Connected At",
+    "arduinoLastDisconnected": "Last Disconnected At"
   }
 }

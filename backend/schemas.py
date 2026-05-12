@@ -130,3 +130,57 @@ class WatchPeriodSeriesResponse(BaseModel):
     day: WatchPeriodSeries
     week: WatchPeriodSeries
     month: WatchPeriodSeries
+
+
+class AnalyticsReportPoint(BaseModel):
+    timestamp: str
+    co2: Optional[float]
+    voc: Optional[float]
+    pm25: Optional[float]
+    pm10: Optional[float]
+    sample_count: int
+
+
+class AnalyticsMetricStats(BaseModel):
+    metric: str
+    min: Optional[float]
+    max: Optional[float]
+    avg: Optional[float]
+    stddev: Optional[float]
+    min_time: Optional[str]
+    max_time: Optional[str]
+
+
+class AnalyticsReportResponse(BaseModel):
+    start: str
+    end: str
+    period: str
+    period_seconds: int
+    point_count: int
+    points: list[AnalyticsReportPoint]
+    statistics: dict[str, AnalyticsMetricStats]
+
+
+class DashboardPeak(BaseModel):
+    metric: str
+    value: float
+    timestamp: str
+
+
+class DashboardAdvancedAnalysis(BaseModel):
+    duration_by_metric: dict[str, float]
+    peak: Optional[DashboardPeak]
+    recovery_minutes: Optional[float]
+    co2_slope_per_minute: float
+    ventilation_label_key: str
+    anomaly_chemical: int
+    anomaly_crowded: int
+
+
+class DashboardAnalysisResponse(BaseModel):
+    start: str
+    end: str
+    period: str
+    thresholds: dict[str, float]
+    aqi: int
+    advanced: DashboardAdvancedAnalysis
