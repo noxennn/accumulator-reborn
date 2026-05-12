@@ -51,7 +51,7 @@ const AQIIndicator: React.FC<AQIIndicatorProps> = ({ value, timestamp }) => {
               <InfoTooltip
                 title={t('aqi.title')}
                 description={getAQIDescription(value)}
-                optimalRange="0-50"
+                optimalRange={t('aqi.optimalRange')}
                 timestamp={timestamp}
               />
             </div>

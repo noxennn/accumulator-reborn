@@ -1,5 +1,6 @@
 import React from 'react';
 import { Wind } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import InfoTooltip from './InfoTooltip';
 import StatsRow from './StatsRow';
 import { SensorStatistics } from '../lib/analyticsApi';
@@ -11,6 +12,7 @@ interface VOCIndicatorProps {
 }
 
 const VOCIndicator: React.FC<VOCIndicatorProps> = ({ value, timestamp, stats }) => {
+  const { t } = useTranslation();
   return (
     <div className="card bg-base-100 shadow-xl h-full">
       <div className="card-body p-4">
@@ -20,9 +22,9 @@ const VOCIndicator: React.FC<VOCIndicatorProps> = ({ value, timestamp, stats }) 
             <div className="flex items-center gap-1">
               <h2 className="card-title text-lg">VOC</h2>
               <InfoTooltip
-                title="Uçucu Organik Bileşikler (VOC)"
-                description="Havada bulunan organik kimyasal maddeler. Yüksek seviyeler baş ağrısı, mide bulantısı ve göz tahrişine neden olabilir."
-                optimalRange="0-3 ppm"
+                title={t('sensorTooltips.voc.title')}
+                description={t('sensorTooltips.voc.description')}
+                optimalRange={t('sensorTooltips.voc.optimalRange')}
                 timestamp={timestamp}
               />
             </div>

@@ -422,7 +422,7 @@ const Dashboard = () => {
           <div className="card-body">
             <div>
               <h2 className="card-title text-base sm:text-lg mb-2">{t('trend.title')}</h2>
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-2">
                 {/* Time range inputs */}
                 <div className="flex items-center gap-1">
                   <input
@@ -445,33 +445,40 @@ const Dashboard = () => {
                     disabled={histLoading}
                   />
                 </div>
-                {/* Bucket period */}
-                <div className="join">
-                  {TREND_PERIODS.map(p => (
-                    <button
-                      key={p}
-                      className={`join-item btn btn-xs px-2 ${
-                        trendPeriod === p ? 'btn-primary' : 'btn-outline'
-                      }`}
-                      onClick={() => setTrendPeriod(p)}
-                      disabled={histLoading}
-                    >
-                      {t(`trend.periods.${p}`, p)}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs font-medium text-base-content/80 whitespace-nowrap">
+                    {t('trend.samplingInterval')}
+                  </span>
+                  <select
+                    className="select select-bordered select-xs w-auto min-w-[7.5rem]"
+                    value={trendPeriod}
+                    onChange={e => setTrendPeriod(e.target.value)}
+                    disabled={histLoading}
+                    aria-label={t('trend.samplingInterval')}
+                  >
+                    {TREND_PERIODS.map(p => (
+                      <option key={p} value={p}>
+                        {t(`trend.periods.${p}`, p)}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <div className="join">
+                <div className="flex gap-2 shrink-0">
                   <button
-                    className="join-item btn btn-primary btn-xs"
+                    type="button"
+                    className="btn btn-primary btn-xs"
                     onClick={handleApply}
                     disabled={histLoading || !isDirty}
                   >
-                    {histLoading
-                      ? <RefreshCw className="w-3 h-3 animate-spin" />
-                      : t('trend.apply')}
+                    {histLoading ? (
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                    ) : (
+                      t('trend.apply')
+                    )}
                   </button>
                   <button
-                    className="join-item btn btn-ghost btn-xs"
+                    type="button"
+                    className="btn btn-outline btn-primary btn-xs"
                     onClick={fetchHistoricalData}
                     disabled={histLoading}
                     title={t('actions.refresh')}

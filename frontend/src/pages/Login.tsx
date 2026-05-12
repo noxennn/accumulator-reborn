@@ -79,8 +79,7 @@ const Login = () => {
               </svg>
             </div>
           </div>
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">Accumulator</h1>
-          <p className="text-lg text-gray-600 font-medium">{t('airQualityStation')}</p>
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">{t('appTitle')}</h1>
           <div className="mt-4">
             <p className="text-sm text-gray-500">{t('login.title')}</p>
           </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Wind } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import InfoTooltip from './InfoTooltip';
 import StatsRow from './StatsRow';
 import { SensorStatistics } from '../lib/analyticsApi';
@@ -11,6 +12,7 @@ interface PM10IndicatorProps {
 }
 
 const PM10Indicator: React.FC<PM10IndicatorProps> = ({ value, timestamp, stats }) => {
+  const { t } = useTranslation();
   return (
     <div className="card bg-base-100 shadow-xl h-full">
       <div className="card-body p-4">
@@ -20,9 +22,9 @@ const PM10Indicator: React.FC<PM10IndicatorProps> = ({ value, timestamp, stats }
             <div className="flex items-center gap-1">
               <h2 className="card-title text-lg">PM10</h2>
               <InfoTooltip
-                title="PM10"
-                description="10 mikrometreden küçük partikül madde. Solunum yollarını etkileyebilir ve alerjik reaksiyonlara neden olabilir."
-                optimalRange="0-150 μg/m³"
+                title={t('sensorTooltips.pm10.title')}
+                description={t('sensorTooltips.pm10.description')}
+                optimalRange={t('sensorTooltips.pm10.optimalRange')}
                 timestamp={timestamp}
               />
             </div>

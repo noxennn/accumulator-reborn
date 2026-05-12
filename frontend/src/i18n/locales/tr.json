@@ -1,5 +1,31 @@
 {
   "appTitle": "Hava Kalitesi Monitörü",
+  "documentTitle": "Hava Kalitesi Monitörü",
+  "infoTooltip": {
+    "optimalRangeLabel": "Optimum aralık:"
+  },
+  "sensorTooltips": {
+    "co2": {
+      "title": "Karbondioksit (CO₂)",
+      "description": "Havadaki karbondioksit konsantrasyonu. Yüksek seviyeler baş ağrısı, yorgunluk ve konsantrasyon sorunlarına yol açabilir.",
+      "optimalRange": "400–800 ppm"
+    },
+    "voc": {
+      "title": "Uçucu organik bileşikler (VOC)",
+      "description": "İç mekân havasındaki organik kimyasallar. Yüksek seviyeler baş ağrısı, mide bulantısı ve göz tahrişine neden olabilir.",
+      "optimalRange": "0–500 ppb"
+    },
+    "pm25": {
+      "title": "PM2.5",
+      "description": "2,5 mikrometreden küçük partikül madde. Akciğerlere derinlemesine nüfuz edebilir ve solunum sorunlarını kötüleştirebilir.",
+      "optimalRange": "0–35 μg/m³"
+    },
+    "pm10": {
+      "title": "PM10",
+      "description": "10 mikrometreden küçük partikül madde. Solunum yollarını etkileyebilir ve alerjik reaksiyonlara yol açabilir.",
+      "optimalRange": "0–150 μg/m³"
+    }
+  },
   "airQualityStation": "Hava Kalitesi İzleme İstasyonu",
   "dashboard": "Gösterge Paneli",
   "analytics": "Analizler",
@@ -131,10 +157,12 @@
       "poor": "Hassas gruplar sağlık etkileri yaşayabilir.",
       "veryPoor": "Herkes sağlık etkileri yaşamaya başlayabilir.",
       "hazardous": "Sağlık uyarısı: Herkes ciddi sağlık etkileriyle karşılaşabilir."
-    }
+    },
+    "optimalRange": "0–50"
   },
   "trend": {
     "title": "24 Saatlik Trend",
+    "samplingInterval": "Örnekleme aralığı",
     "legendHelp": "Değerleri göstermek veya gizlemek için etiketlere tıklayın",
     "apply": "Uygula",
     "periods": {

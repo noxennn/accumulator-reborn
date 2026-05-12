@@ -1,5 +1,31 @@
 {
   "appTitle": "Air Quality Monitor",
+  "documentTitle": "Air Quality Monitor",
+  "infoTooltip": {
+    "optimalRangeLabel": "Optimal range:"
+  },
+  "sensorTooltips": {
+    "co2": {
+      "title": "Carbon dioxide (CO₂)",
+      "description": "Concentration of carbon dioxide in the air. High levels can contribute to headaches, fatigue, and reduced concentration.",
+      "optimalRange": "400–800 ppm"
+    },
+    "voc": {
+      "title": "Volatile organic compounds (VOC)",
+      "description": "Organic chemicals present in indoor air. High levels may cause headaches, nausea, or eye irritation.",
+      "optimalRange": "0–500 ppb"
+    },
+    "pm25": {
+      "title": "PM2.5",
+      "description": "Fine particulate matter smaller than 2.5 micrometers. It can penetrate deep into the lungs and worsen respiratory conditions.",
+      "optimalRange": "0–35 μg/m³"
+    },
+    "pm10": {
+      "title": "PM10",
+      "description": "Particulate matter smaller than 10 micrometers. It can affect airways and trigger allergic reactions.",
+      "optimalRange": "0–150 μg/m³"
+    }
+  },
   "airQualityStation": "Air Quality Monitoring Station",
   "dashboard": "Dashboard",
   "analytics": "Analytics",
@@ -131,10 +157,12 @@
       "poor": "Members of sensitive groups may experience health effects.",
       "veryPoor": "Everyone may begin to experience health effects.",
       "hazardous": "Health alert: everyone may experience serious health effects."
-    }
+    },
+    "optimalRange": "0–50"
   },
   "trend": {
     "title": "24-Hour Trend",
+    "samplingInterval": "Sampling interval",
     "legendHelp": "Click on labels to show or hide values",
     "apply": "Apply",
     "periods": {

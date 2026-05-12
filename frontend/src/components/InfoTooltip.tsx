@@ -35,7 +35,7 @@ const InfoTooltip: React.FC<InfoTooltipProps> = ({ title, description, optimalRa
         <div className="text-gray-300 mb-1">{description}</div>
         {optimalRange && (
           <div className="text-xs text-gray-400">
-            <span className="font-medium">Optimum Aralık:</span> {optimalRange}
+            <span className="font-medium">{t('infoTooltip.optimalRangeLabel')}</span> {optimalRange}
           </div>
         )}
         {timestamp && (

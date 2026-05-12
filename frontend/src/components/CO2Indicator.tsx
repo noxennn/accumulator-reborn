@@ -1,5 +1,6 @@
 import React from 'react';
 import { Wind } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import InfoTooltip from './InfoTooltip';
 import StatsRow from './StatsRow';
 import { SensorStatistics } from '../lib/analyticsApi';
@@ -11,6 +12,7 @@ interface CO2IndicatorProps {
 }
 
 const CO2Indicator: React.FC<CO2IndicatorProps> = ({ value, timestamp, stats }) => {
+  const { t } = useTranslation();
   return (
     <div className="card bg-base-100 shadow-xl h-full">
       <div className="card-body p-4">
@@ -20,9 +22,9 @@ const CO2Indicator: React.FC<CO2IndicatorProps> = ({ value, timestamp, stats }) 
             <div className="flex items-center gap-1">
               <h2 className="card-title text-lg">CO₂</h2>
               <InfoTooltip
-                title="Karbondioksit (CO₂)"
-                description="Havadaki karbondioksit konsantrasyonu. Yüksek seviyeler baş ağrısı, yorgunluk ve konsantrasyon sorunlarına yol açabilir."
-                optimalRange="400-800 ppm"
+                title={t('sensorTooltips.co2.title')}
+                description={t('sensorTooltips.co2.description')}
+                optimalRange={t('sensorTooltips.co2.optimalRange')}
                 timestamp={timestamp}
               />
             </div>

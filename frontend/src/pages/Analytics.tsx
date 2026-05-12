@@ -99,7 +99,12 @@ const Analytics = () => {
   // Periyot ve grafik tipi
   const [period, setPeriod] = useState('1h');
   const [chartType, setChartType] = useState<'line' | 'area' | 'composed'>('line');
-  const [selectedMetrics, setSelectedMetrics] = useState(['co2', 'pm25']);
+  const [visibleMetrics, setVisibleMetrics] = useState<Record<string, boolean>>({
+    co2: true,
+    pm25: true,
+    pm10: true,
+    voc: true,
+  });
 
   // Veri
   const [data, setData] = useState<any[]>([]);
@@ -124,6 +129,15 @@ const Analytics = () => {
     { id: 'pm10', name: t('sensors.pm10'), color: '#ffc658', unit: t('units.pm')  },
     { id: 'voc',  name: t('sensors.voc'),  color: '#ff8042', unit: t('units.voc') },
   ];
+
+  const visibleMetricIds = useMemo(
+    () => metrics.map(m => m.id).filter(id => visibleMetrics[id]),
+    [metrics, visibleMetrics]
+  );
+
+  const toggleMetricVisibility = (metric: string) => {
+    setVisibleMetrics(prev => ({ ...prev, [metric]: !prev[metric] }));
+  };
 
   // ── Tarih aralığını hesapla ───────────────────────────────────────
   const getDateRange = useCallback(() => {
@@ -187,11 +201,11 @@ const Analytics = () => {
 
   // ── İstatistik çek ───────────────────────────────────────────────
   useEffect(() => {
-    if (loading || !data.length || !selectedMetrics.length) return;
+    if (loading || !data.length || visibleMetricIds.length === 0) return;
     const { start, end } = getDateRange();
     const load = async () => {
       const stats: Record<string, any> = {};
-      for (const id of selectedMetrics) {
+      for (const id of visibleMetricIds) {
         try {
           const s = await analyticsApi.getMetricStats(id, start, end);
           stats[id] = analyticsApi.formatStats(s);
@@ -210,7 +224,7 @@ const Analytics = () => {
       setMetricStats(stats);
     };
     load();
-  }, [selectedMetrics, data, loading]);
+  }, [visibleMetricIds, data, loading, getDateRange]);
 
   const buildReportLines = (report: AnalyticsReportResponse) => {
     const lines: string[] = [];
@@ -510,26 +524,77 @@ const Analytics = () => {
               borderRadius: '0.5rem',
             }}
           />
-          <Legend wrapperStyle={{ paddingTop: 20, color: '#6b7280' }} />
+          <Legend
+            onClick={(dataEntry) => toggleMetricVisibility(String(dataEntry.dataKey))}
+            wrapperStyle={{ cursor: 'pointer', paddingTop: 20, color: '#6b7280' }}
+            formatter={(value, entry) => {
+              const metricId = String(entry.dataKey);
+              const active = metricId && visibleMetrics[metricId];
+              return (
+                <span
+                  style={{
+                    opacity: active ? 1 : 0.4,
+                    margin: '0 8px',
+                    fontWeight: active ? 'bold' : 'normal',
+                  }}
+                >
+                  {value}
+                </span>
+              );
+            }}
+          />
           {refArea}
-          {selectedMetrics.map(id => {
-            const m = metrics.find(x => x.id === id)!;
-            if (chartType === 'area') return (
-              <Area key={id} type="monotone" dataKey={id} stroke={m.color} fill={m.color}
-                name={`${m.name} (${m.unit})`} fillOpacity={0.3} strokeWidth={2} dot={false}
-                isAnimationActive={false} />
-            );
-            if (chartType === 'composed') return (
-              <React.Fragment key={id}>
-                <Line type="monotone" dataKey={id} stroke={m.color} name={`${m.name} (${m.unit})`}
-                  strokeWidth={2} dot={false} isAnimationActive={false} />
-                <Scatter dataKey={id} fill={m.color} r={3} isAnimationActive={false} />
-              </React.Fragment>
-            );
+          {metrics.map(m => {
+            const id = m.id;
+            const hidden = !visibleMetrics[id];
+            if (chartType === 'area') {
+              return (
+                <Area
+                  key={id}
+                  type="monotone"
+                  dataKey={id}
+                  stroke={m.color}
+                  fill={m.color}
+                  name={`${m.name} (${m.unit})`}
+                  fillOpacity={0.3}
+                  strokeWidth={2}
+                  dot={false}
+                  hide={hidden}
+                  isAnimationActive={false}
+                />
+              );
+            }
+            if (chartType === 'composed') {
+              return (
+                <React.Fragment key={id}>
+                  <Line
+                    type="monotone"
+                    dataKey={id}
+                    stroke={m.color}
+                    name={`${m.name} (${m.unit})`}
+                    strokeWidth={2}
+                    dot={false}
+                    hide={hidden}
+                    isAnimationActive={false}
+                  />
+                  {!hidden && (
+                    <Scatter dataKey={id} fill={m.color} r={3} isAnimationActive={false} legendType="none" />
+                  )}
+                </React.Fragment>
+              );
+            }
             return (
-              <Line key={id} type="monotone" dataKey={id} stroke={m.color}
-                name={`${m.name} (${m.unit})`} strokeWidth={2} dot={false}
-                isAnimationActive={false} />
+              <Line
+                key={id}
+                type="monotone"
+                dataKey={id}
+                stroke={m.color}
+                name={`${m.name} (${m.unit})`}
+                strokeWidth={2}
+                dot={false}
+                hide={hidden}
+                isAnimationActive={false}
+              />
             );
           })}
         </ChartComp>
@@ -604,21 +669,27 @@ const Analytics = () => {
                 </button>
               </div>
 
-              {/* Periyot */}
-              <select
-                className="select select-bordered select-sm"
-                value={period}
-                onChange={e => setPeriod(e.target.value)}
-                disabled={loading}
-              >
-                {PERIODS.map(p => (
-                  <option key={p.value} value={p.value}>{t(`trend.periods.${p.value}`, p.value)}</option>
-                ))}
-              </select>
+              {/* Periyot: label + select on one row so height matches join / other selects */}
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs font-medium text-base-content/80 whitespace-nowrap">
+                  {t('trend.samplingInterval')}
+                </span>
+                <select
+                  className="select select-bordered select-sm w-auto min-w-[7.5rem]"
+                  value={period}
+                  onChange={e => setPeriod(e.target.value)}
+                  disabled={loading}
+                  aria-label={t('trend.samplingInterval')}
+                >
+                  {PERIODS.map(p => (
+                    <option key={p.value} value={p.value}>{t(`trend.periods.${p.value}`, p.value)}</option>
+                  ))}
+                </select>
+              </div>
 
               {/* Grafik tipi */}
               <select
-                className="select select-bordered select-sm"
+                className="select select-bordered select-sm shrink-0"
                 value={chartType}
                 onChange={e => setChartType(e.target.value as any)}
                 disabled={loading}
@@ -672,23 +743,6 @@ const Analytics = () => {
             </div>
           )}
 
-          {/* Satır 3: Metrik seçimi */}
-          <div className="flex flex-wrap gap-4">
-            {metrics.map(m => (
-              <label key={m.id} className="cursor-pointer flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  className="checkbox checkbox-primary checkbox-sm"
-                  checked={selectedMetrics.includes(m.id)}
-                  onChange={e => setSelectedMetrics(prev =>
-                    e.target.checked ? [...prev, m.id] : prev.filter(x => x !== m.id)
-                  )}
-                  disabled={loading}
-                />
-                <span className="label-text">{m.name}</span>
-              </label>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -711,9 +765,12 @@ const Analytics = () => {
             )}
           </div>
           {data.length > 0 && (
-            <p className="text-xs opacity-50 text-right">
-              {t('analyticsPage.dataPointsHint', { count: data.length })}
-            </p>
+            <>
+              <p className="text-xs opacity-50 text-right">
+                {t('analyticsPage.dataPointsHint', { count: data.length })}
+              </p>
+              <p className="mt-2 text-sm text-center text-base-content/60">{t('trend.legendHelp')}</p>
+            </>
           )}
         </div>
       </div>
@@ -727,11 +784,11 @@ const Analytics = () => {
               <div className="flex justify-center items-center py-6">
                 <span className="loading loading-spinner loading-md opacity-50"></span>
               </div>
-            ) : filteredExceededIntervals.filter(iv => selectedMetrics.includes(iv.metric)).length === 0 ? (
+            ) : filteredExceededIntervals.filter(iv => visibleMetrics[iv.metric]).length === 0 ? (
               <p className="text-sm opacity-40">{t('threshold.noExceededIntervals')}</p>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {metrics.filter(m => selectedMetrics.includes(m.id)).map(m => {
+                {metrics.filter(m => visibleMetrics[m.id]).map(m => {
                   const intervals = filteredExceededIntervals
                     .filter(iv => iv.metric === m.id)
                     .sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
@@ -786,9 +843,9 @@ const Analytics = () => {
       )}
 
       {/* ── İstatistik kartları ── */}
-      {selectedMetrics.length > 0 && (
+      {visibleMetricIds.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {selectedMetrics.map(id => {
+          {visibleMetricIds.map(id => {
             const m = metrics.find(x => x.id === id)!;
             const s = metricStats[id];
             return (

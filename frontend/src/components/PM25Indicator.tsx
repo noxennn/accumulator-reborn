@@ -1,5 +1,6 @@
 import React from 'react';
 import { Wind } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import InfoTooltip from './InfoTooltip';
 import StatsRow from './StatsRow';
 import { SensorStatistics } from '../lib/analyticsApi';
@@ -11,6 +12,7 @@ interface PM25IndicatorProps {
 }
 
 const PM25Indicator: React.FC<PM25IndicatorProps> = ({ value, timestamp, stats }) => {
+  const { t } = useTranslation();
   return (
     <div className="card bg-base-100 shadow-xl h-full">
       <div className="card-body p-4">
@@ -20,9 +22,9 @@ const PM25Indicator: React.FC<PM25IndicatorProps> = ({ value, timestamp, stats }
             <div className="flex items-center gap-1">
               <h2 className="card-title text-lg">PM2.5</h2>
               <InfoTooltip
-                title="PM2.5"
-                description="2.5 mikrometreden küçük partikül madde. Akciğerlere derinlemesine nüfuz edebilir ve solunum sorunlarına yol açabilir."
-                optimalRange="0-35 μg/m³"
+                title={t('sensorTooltips.pm25.title')}
+                description={t('sensorTooltips.pm25.description')}
+                optimalRange={t('sensorTooltips.pm25.optimalRange')}
                 timestamp={timestamp}
               />
             </div>
