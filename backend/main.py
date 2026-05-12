@@ -273,8 +273,6 @@ def _build_dashboard_advanced(points: list[dict[str, Any]], thresholds: dict[str
             "ventilation_label_key": "insufficientData",
             "anomaly_chemical": 0,
             "anomaly_crowded": 0,
-            "risk15": 0.0,
-            "risk30": 0.0,
         }
 
     expected_minutes = {
@@ -342,27 +340,6 @@ def _build_dashboard_advanced(points: list[dict[str, Any]], thresholds: dict[str
     anomaly_chemical = sum(1 for p in normalized if p["co2"] <= thresholds["co2"] and p["voc"] > thresholds["voc"])
     anomaly_crowded = sum(1 for p in normalized if p["co2"] > thresholds["co2"] and p["voc"] > thresholds["voc"])
 
-    def _point_risk(p: dict[str, Any]) -> float:
-        contributions = [
-            max(0.0, p["co2"] / thresholds["co2"] - 1) * 0.35,
-            max(0.0, p["voc"] / thresholds["voc"] - 1) * 0.25,
-            max(0.0, p["pm25"] / thresholds["pm25"] - 1) * 0.2,
-            max(0.0, p["pm10"] / thresholds["pm10"] - 1) * 0.2,
-        ]
-        return min(100.0, sum(contributions) * 100)
-
-    def _rolling_risk(minutes: int) -> float:
-        window = [p for p in normalized if (latest_ts - p["ts"]).total_seconds() <= minutes * 60]
-        if not window:
-            return 0.0
-        weighted_sum = 0.0
-        weight_total = 0.0
-        for idx, point in enumerate(window):
-            weight = idx + 1
-            weighted_sum += _point_risk(point) * weight
-            weight_total += weight
-        return (weighted_sum / weight_total) if weight_total > 0 else 0.0
-
     return {
         "duration_by_metric": {
             "co2": round(duration_by_metric["co2"], 1),
@@ -383,8 +360,6 @@ def _build_dashboard_advanced(points: list[dict[str, Any]], thresholds: dict[str
         "ventilation_label_key": ventilation_label_key,
         "anomaly_chemical": anomaly_chemical,
         "anomaly_crowded": anomaly_crowded,
-        "risk15": round(_rolling_risk(15), 1),
-        "risk30": round(_rolling_risk(30), 1),
     }
 
 

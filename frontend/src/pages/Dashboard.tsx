@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceArea } from 'recharts';
 import { useTranslation } from 'react-i18next';
-import { RefreshCw, AlarmClock, TrendingUp, Activity, FlaskConical, ShieldAlert } from 'lucide-react';
+import { RefreshCw, AlarmClock, TrendingUp, Activity, FlaskConical } from 'lucide-react';
 
 import AQIIndicator from '../components/AQIIndicator';
 import CO2Indicator from '../components/CO2Indicator';
@@ -319,7 +319,7 @@ const Dashboard = () => {
 
       {isAuthenticated && advancedAnalysis && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <div className="card bg-base-100 shadow-xl">
               <div className="card-body p-4">
                 <CardTitleWithInfo
@@ -391,21 +391,6 @@ const Dashboard = () => {
                 <div className="text-sm space-y-1">
                   <p>{t('dashboardAnalysis.labels.co2NormalVocHigh')}: <span className="font-semibold">{advancedAnalysis.anomaly_chemical}</span></p>
                   <p>{t('dashboardAnalysis.labels.co2HighVocHigh')}: <span className="font-semibold">{advancedAnalysis.anomaly_crowded}</span></p>
-                </div>
-              </div>
-            </div>
-
-            <div className="card bg-base-100 shadow-xl">
-              <div className="card-body p-4">
-                <CardTitleWithInfo
-                  title={t('dashboardAnalysis.titles.rollingRiskScore')}
-                  info={t('dashboardAnalysis.info.rollingRiskScore')}
-                  icon={ShieldAlert}
-                />
-                <div className="text-sm space-y-1">
-                  <p>{t('dashboardAnalysis.labels.last15Min')}: <span className="font-semibold">{advancedAnalysis.risk15}</span></p>
-                  <p>{t('dashboardAnalysis.labels.last30Min')}: <span className="font-semibold">{advancedAnalysis.risk30}</span></p>
-                  <p className="opacity-70">{t('dashboardAnalysis.labels.weightedAverageRisk')}</p>
                 </div>
               </div>
             </div>

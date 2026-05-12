@@ -175,8 +175,6 @@ class DashboardAdvancedAnalysis(BaseModel):
     ventilation_label_key: str
     anomaly_chemical: int
     anomaly_crowded: int
-    risk15: float
-    risk30: float
 
 
 class DashboardAnalysisResponse(BaseModel):
