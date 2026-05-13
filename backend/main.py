@@ -586,10 +586,19 @@ async def check_and_alert(co2: float, voc: float, pm25: float, pm10: float, now_
 
             if exceeded:
                 logger.info(f"Sending alert to {user.email}: {exceeded}")
+                now_tr = now_utc + timedelta(hours=3)
+                tr_months = [
+                    "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+                    "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"
+                ]
+                formatted_timestamp = (
+                    f"{now_tr.day:02d} {tr_months[now_tr.month - 1]} "
+                    f"{now_tr.year} {now_tr.strftime('%H:%M:%S')}"
+                )
                 await send_alert_email(
                     user_email=user.email,
                     alert_info={
-                        "timestamp": now_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                        "timestamp": formatted_timestamp,
                         "co2": co2,
                         "pm25": pm25,
                         "pm10": pm10,
